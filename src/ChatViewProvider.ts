@@ -972,6 +972,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         allowedChatIds: st?.allowedChatIds ?? [],
         workspacePath: st?.workspacePath ?? "",
         startOnActivation: st?.startOnActivation ?? false,
+        proxyUrl: st?.proxyUrl ?? "",
       },
     });
   }
@@ -983,6 +984,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     await tgConfig.update("allowedChatIds", config.allowedChatIds, vscode.ConfigurationTarget.Global);
     await tgConfig.update("workspacePath", config.workspacePath, vscode.ConfigurationTarget.Global);
     await tgConfig.update("startOnActivation", config.startOnActivation, vscode.ConfigurationTarget.Global);
+    await tgConfig.update("proxyUrl", config.proxyUrl, vscode.ConfigurationTarget.Global);
   }
 
   // ---- Agents / Skills lists ------------------------------------------

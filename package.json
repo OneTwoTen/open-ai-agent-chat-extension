@@ -3,7 +3,7 @@
   "displayName": "Open AI Agent Chat",
   "description": "An agentic coding assistant for VS Code with multi-provider LLM support (OpenAI, Anthropic, Google, Azure, Bedrock, Mistral, Groq, Ollama, and more), three-tier search, multi-agent + skills, and chat history.",
   "version": "0.0.1",
-  "publisher": "@doct",
+  "publisher": "doct",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -13,6 +13,10 @@
     "Other"
   ],
   "main": "./dist/extension.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OneTwoTen/open-ai-agent-chat-extension.git"
+  },
   "activationEvents": [],
   "contributes": {
     "viewsContainers": {
@@ -255,7 +259,9 @@
         },
         "aiAgentChat.telegram.allowedChatIds": {
           "type": "array",
-          "items": { "type": "number" },
+          "items": {
+            "type": "number"
+          },
           "default": [],
           "description": "List of Telegram chat/user IDs allowed to use the bot. Empty = allow all (not recommended)."
         },
@@ -268,6 +274,11 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically start the Telegram bot when VS Code launches (if a token is configured)."
+        },
+        "aiAgentChat.telegram.proxyUrl": {
+          "type": "string",
+          "default": "",
+          "description": "HTTP/HTTPS proxy URL for Telegram API requests (e.g. http://127.0.0.1:7890). Leave empty to use direct connection or HTTPS_PROXY env var."
         }
       }
     }
@@ -315,6 +326,7 @@
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "undici": "^7.28.0",
     "zod": "^4.0.0"
   }
 }

@@ -1,6 +1,6 @@
 import { AgentSession } from "../agent/agent";
 import type { Context } from "grammy";
-import type { Attachment } from "../shared/protocol";
+import type { Attachment, TranscriptItem } from "../shared/protocol";
 
 export type SessionState = "idle" | "running" | "waiting_confirm";
 
@@ -30,6 +30,10 @@ export interface TelegramChatSession {
   abortController: AbortController | null;
   queue: QueuedRequest[];
   createdAt: number;
+  /** Persisted session id for SessionStore (assigned on first turn). */
+  sessionId: string | null;
+  /** Transcript items accumulated during the current conversation. */
+  transcript: TranscriptItem[];
 }
 
 export interface TelegramBotConfig {
@@ -37,6 +41,7 @@ export interface TelegramBotConfig {
   allowedChatIds: number[];
   workspacePath: string;
   startOnActivation: boolean;
+  proxyUrl: string;
 }
 
 export interface TelegramBotStatus {
@@ -46,6 +51,7 @@ export interface TelegramBotStatus {
   allowedChatIds: number[];
   workspacePath: string;
   startOnActivation: boolean;
+  proxyUrl: string;
 }
 
 export type GrammyContext = Context;

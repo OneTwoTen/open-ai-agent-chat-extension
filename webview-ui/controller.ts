@@ -103,6 +103,7 @@ const INITIAL: ChatState = {
     allowedChatIds: [],
     workspacePath: "",
     startOnActivation: false,
+    proxyUrl: "",
   },
   workingSet: [],
 };

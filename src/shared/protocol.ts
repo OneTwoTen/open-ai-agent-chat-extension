@@ -248,6 +248,7 @@ export interface TelegramStatus {
   allowedChatIds: number[];
   workspacePath: string;
   startOnActivation: boolean;
+  proxyUrl: string;
 }
 
 /** Telegram bot configuration update from the UI. */
@@ -255,4 +256,5 @@ export interface TelegramConfigUpdate {
   allowedChatIds: number[];
   workspacePath: string;
   startOnActivation: boolean;
+  proxyUrl: string;
 }

@@ -26,8 +26,8 @@ import {
   PROVIDERS,
 } from "../providers";
 import type { TelegramSessionManager } from "./session";
-import type { PermissionLevel, Attachment } from "../shared/protocol";
-import { SessionStore } from "../sessions";
+import type { PermissionLevel, Attachment, TranscriptItem } from "../shared/protocol";
+import { SessionStore, titleFrom } from "../sessions";
 
 interface QueuedRequest {
   text: string;
@@ -92,6 +92,7 @@ export async function runAgentTurn(
   secrets: vscode.SecretStorage,
   attachments: Attachment[],
   defaultWorkspacePath: string,
+  storageUri: vscode.Uri,
 ): Promise<void> {
   const session = sessions.getOrCreate(chatId);
 
@@ -124,6 +125,11 @@ export async function runAgentTurn(
   session.streamingMessageId = null;
   session.streamingText = "";
   session.abortController = new AbortController();
+
+  // Assign a persistent session id on first turn
+  if (!session.sessionId) {
+    session.sessionId = new SessionStore(storageUri).newId();
+  }
 
   log("info", `Starting turn for chat ${chatId}`, { agentId: session.agentId, textLen: text.length });
 
@@ -198,12 +204,28 @@ export async function runAgentTurn(
       toolCtx.allowedSubAgents = agent.subAgents;
       toolCtx.delegate = async (subAgentId: string, task: string) => {
         await bot.api.sendMessage(chatId, `↳ Delegating to ${subAgentId}…`);
-        await runAgentTurn(bot, chatId, task, sessions, secrets, [], defaultWorkspacePath);
+        await runAgentTurn(bot, chatId, task, sessions, secrets, [], defaultWorkspacePath, storageUri);
         return "(sub-agent completed)";
       };
     }
 
     const tools = { ...buildTools(toolCtx, agent.tools), ...mcp.getTools() };
+
+    // Track transcript items for persistence
+    const transcript: TranscriptItem[] = [];
+    let openAssistant: { kind: "assistant"; text: string; model?: string } | null = null;
+    const toolIndexById = new Map<string, number>();
+
+    const appendAssistant = (t: string) => {
+      if (openAssistant) {
+        openAssistant.text += t;
+      } else {
+        openAssistant = { kind: "assistant", text: t, model: turnLabel };
+        transcript.push(openAssistant);
+      }
+    };
+
+    const turnLabel = `${agent.name} · ${providerId}/${modelId}`;
 
     const callbacks = createTelegramCallbacks(
       bot, chatId,
@@ -212,6 +234,46 @@ export async function runAgentTurn(
       () => session.streamingText,
       (t) => { session.streamingText = t; },
     );
+
+    // Wrap callbacks to also track transcript
+    const wrappedCallbacks: import("../agent/agent").AgentCallbacks = {
+      onTextDelta: (t: string) => {
+        callbacks.onTextDelta(t);
+        appendAssistant(t);
+      },
+      onReasoningDelta: (t: string) => {
+        callbacks.onReasoningDelta(t);
+      },
+      onToolCall: (id: string, name: string, args: unknown) => {
+        callbacks.onToolCall(id, name, args);
+        openAssistant = null;
+        toolIndexById.set(id, transcript.length);
+        transcript.push({ kind: "tool", id, name, args });
+      },
+      onToolResult: (id: string, name: string, result: unknown) => {
+        callbacks.onToolResult(id, name, result);
+        const idx = toolIndexById.get(id);
+        if (idx !== undefined) {
+          const item = transcript[idx];
+          if (item.kind === "tool") {
+            item.result = typeof result === "string" ? result : JSON.stringify(result);
+          }
+        }
+      },
+      onStepUsage: (tools: string[], usage: UsageStats) => {
+        callbacks.onStepUsage(tools, usage);
+      },
+      onFinalUsage: (usage: UsageStats) => {
+        callbacks.onFinalUsage(usage);
+      },
+      onError: (message: string) => {
+        callbacks.onError(message);
+        transcript.push({ kind: "error", text: message });
+      },
+      onDone: () => {
+        callbacks.onDone();
+      },
+    };
 
     const maxSteps = vscode.workspace.getConfiguration("aiAgentChat").get<number>("maxAgentSteps", 25);
 
@@ -229,6 +291,9 @@ export async function runAgentTurn(
       userText = `${text}\n\nAttached context:\n${blocks}`;
     }
 
+    // Add user message to transcript
+    transcript.push({ kind: "user", text, attachments: attachments.map((a) => a.path) });
+
     await session.agentSession.run({
       model,
       systemMessage,
@@ -238,8 +303,25 @@ export async function runAgentTurn(
       maxOutputTokens: maxOutput,
       providerOptions,
       signal: session.abortController!.signal,
-      callbacks,
+      callbacks: wrappedCallbacks,
     });
+
+    // Persist session to SessionStore
+    if (transcript.length > 0 && session.sessionId) {
+      try {
+        const store = new SessionStore(storageUri);
+        const firstUser = transcript.find((t) => t.kind === "user") as { text: string } | undefined;
+        await store.save({
+          id: session.sessionId,
+          title: `TG:${chatId} ${titleFrom(firstUser?.text || text || "Chat")}`,
+          updatedAt: Date.now(),
+          transcript,
+          history: session.agentSession.getHistory(),
+        });
+      } catch (err) {
+        log("warn", "Failed to persist Telegram session", err);
+      }
+    }
 
     log("info", `Turn completed for chat ${chatId}`);
 
@@ -274,7 +356,7 @@ export async function runAgentTurn(
     if (session.queue && session.queue.length > 0) {
       const next = session.queue.shift()!;
       setTimeout(() => {
-        runAgentTurn(bot, chatId, next.text, sessions, secrets, next.attachments, defaultWorkspacePath)
+        runAgentTurn(bot, chatId, next.text, sessions, secrets, next.attachments, defaultWorkspacePath, storageUri)
           .then(() => next.resolve())
           .catch(() => next.resolve());
       }, 300);
@@ -341,7 +423,7 @@ export function registerHandlers(
       await ctx.reply("Usage: `/chat <your message>`", { parse_mode: "Markdown" });
       return;
     }
-    await runAgentTurn(bot, ctx.chat!.id, text, sessions, secrets, [], getWorkspacePath());
+    await runAgentTurn(bot, ctx.chat!.id, text, sessions, secrets, [], getWorkspacePath(), storageUri);
   });
 
   // ── /agent ──────────────────────────────────────────────────
@@ -599,7 +681,7 @@ export function registerHandlers(
 
     await runAgentTurn(
       bot, ctx.chat!.id, caption,
-      sessions, secrets, [attachment], getWorkspacePath(),
+      sessions, secrets, [attachment], getWorkspacePath(), storageUri,
     );
   });
 
@@ -630,7 +712,7 @@ export function registerHandlers(
 
     await runAgentTurn(
       bot, ctx.chat!.id, caption,
-      sessions, secrets, [attachment], getWorkspacePath(),
+      sessions, secrets, [attachment], getWorkspacePath(), storageUri,
     );
   });
 
@@ -638,7 +720,7 @@ export function registerHandlers(
 
   bot.on("message:text", async (ctx) => {
     if (ctx.message.text.startsWith("/")) return;
-    await runAgentTurn(bot, ctx.chat!.id, ctx.message.text, sessions, secrets, [], getWorkspacePath());
+    await runAgentTurn(bot, ctx.chat!.id, ctx.message.text, sessions, secrets, [], getWorkspacePath(), storageUri);
   });
 
   // ── Callback queries (inline keyboard confirmations) ────────

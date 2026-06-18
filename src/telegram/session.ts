@@ -19,6 +19,8 @@ export class TelegramSessionManager {
         abortController: null,
         queue: [],
         createdAt: Date.now(),
+        sessionId: null,
+        transcript: [],
       };
       this.sessions.set(chatId, s);
     }
@@ -46,6 +48,8 @@ export class TelegramSessionManager {
       s.abortController = null;
       s.queue = [];
       s.state = "idle";
+      s.sessionId = null;
+      s.transcript = [];
     }
   }
 

@@ -1,9 +1,10 @@
 import { type AgentCallbacks } from "../agent/agent";
 import type { UsageStats } from "../shared/protocol";
 import type { GrammyContext } from "./types";
-import { Api, type Bot } from "grammy";
+import { type Bot } from "grammy";
 
 const MAX_TG_LENGTH = 4000;
+const STREAM_EDIT_LIMIT = 3800;
 const TYPING_INTERVAL_MS = 4000;
 
 function splitMessage(text: string): string[] {
@@ -13,7 +14,6 @@ function splitMessage(text: string): string[] {
   const parts: string[] = [];
   let remaining = text;
   while (remaining.length > 0) {
-    // Try to split at a newline within the limit
     let splitAt = MAX_TG_LENGTH;
     if (remaining.length > MAX_TG_LENGTH) {
       const newlineIdx = remaining.lastIndexOf("\n", MAX_TG_LENGTH);
@@ -40,7 +40,6 @@ async function sendSafe(
     });
     return msg.message_id;
   } catch {
-    // Fallback: try without markdown
     try {
       const msg = await bot.api.sendMessage(chatId, text);
       return msg.message_id;
@@ -63,7 +62,6 @@ async function editSafe(
     });
     return true;
   } catch {
-    // Fallback: try without markdown
     try {
       await bot.api.editMessageText(chatId, messageId, text);
       return true;
@@ -83,8 +81,10 @@ export function createTelegramCallbacks(
   onUsage?: (usage: UsageStats) => void,
 ): AgentCallbacks {
   let typingInterval: ReturnType<typeof setInterval> | null = null;
-  let usageReported = false;
-  let finalUsage: UsageStats | null = null;
+  let messagePromise: Promise<number | null> | null = null;
+  let editChain: Promise<void> = Promise.resolve();
+  let lastRenderedText = "";
+  const toolNames: string[] = [];
 
   const startTyping = () => {
     stopTyping();
@@ -101,91 +101,132 @@ export function createTelegramCallbacks(
     }
   };
 
+  const renderWorkingText = (): string => {
+    const text = getStreamingText();
+    if (text.trim()) {
+      return text;
+    }
+    if (toolNames.length > 0) {
+      return `Working...\nTools: ${toolNames.map((name) => `\`${name}\``).join(" -> ")}`;
+    }
+    return "Working...";
+  };
+
+  const trimForEdit = (text: string): string => {
+    if (text.length <= MAX_TG_LENGTH) {
+      return text;
+    }
+    return text.slice(0, STREAM_EDIT_LIMIT) + "\n\n...(answer is still streaming; full text will be split when done)";
+  };
+
+  const ensureStreamingMessage = (initialText: string): Promise<number | null> => {
+    const mid = getStreamingMessageId();
+    if (mid) {
+      return Promise.resolve(mid);
+    }
+    if (messagePromise) {
+      return messagePromise;
+    }
+
+    const text = trimForEdit(initialText);
+    lastRenderedText = text;
+    messagePromise = sendSafe(bot, chatId, text || "Working...", "Markdown")
+      .then((id) => {
+        if (id) {
+          setStreamingMessageId(id);
+        }
+        return id;
+      })
+      .finally(() => {
+        messagePromise = null;
+      });
+    return messagePromise;
+  };
+
+  const updateStreamingMessage = (text: string): void => {
+    const displayText = trimForEdit(text);
+    editChain = editChain
+      .then(async () => {
+        const id = await ensureStreamingMessage(displayText);
+        if (!id || displayText === lastRenderedText) {
+          return;
+        }
+        lastRenderedText = displayText;
+        await editSafe(bot, chatId, id, displayText, "Markdown");
+      })
+      .catch(() => {});
+  };
+
+  const finalizeLongMessage = (): void => {
+    const text = getStreamingText();
+    if (text.length <= MAX_TG_LENGTH) {
+      return;
+    }
+    editChain = editChain
+      .then(async () => {
+        const id = await ensureStreamingMessage(text);
+        if (!id) {
+          return;
+        }
+        const parts = splitMessage(text);
+        const first = parts.shift();
+        if (first && first !== lastRenderedText) {
+          lastRenderedText = first;
+          await editSafe(bot, chatId, id, first, "Markdown");
+        }
+        for (const part of parts) {
+          await sendSafe(bot, chatId, part, "Markdown");
+        }
+      })
+      .catch(() => {});
+  };
+
   return {
     onTextDelta(text: string): void {
       startTyping();
-      const current = getStreamingText();
-      const updated = current + text;
+      const updated = getStreamingText() + text;
       setStreamingText(updated);
-
-      // Truncate extremely long messages
-      const displayText = updated.length > MAX_TG_LENGTH * 4
-        ? updated.slice(0, MAX_TG_LENGTH * 4) + "\n\n*(message too long, truncated)*"
-        : updated;
-
-      const mid = getStreamingMessageId();
-      if (mid) {
-        if (displayText.length <= MAX_TG_LENGTH) {
-          editSafe(bot, chatId, mid, displayText, "Markdown");
-        } else {
-          // Message too long for edit - send as multiple messages
-          stopTyping();
-
-          // Send accumulated text as separate messages
-          const parts = splitMessage(current);
-          for (const p of parts) {
-            sendSafe(bot, chatId, p, "Markdown");
-          }
-          setStreamingText(text);
-          setStreamingMessageId(null);
-        }
-      }
-
-      // Start a new streaming message
-      if (!getStreamingMessageId()) {
-        sendSafe(bot, chatId, displayText.slice(0, MAX_TG_LENGTH) || "...", "Markdown")
-          .then((id) => {
-            if (id) setStreamingMessageId(id);
-          });
-      }
+      updateStreamingMessage(updated);
     },
 
     onReasoningDelta(_text: string): void {
-      // Silently skip reasoning traces on Telegram
+      // Telegram only shows assistant-facing content.
     },
 
-    onToolCall(id: string, name: string, _args: unknown): void {
+    onToolCall(_id: string, name: string, _args: unknown): void {
       startTyping();
-      // Send a concise tool notification
-      bot.api.sendMessage(chatId, `🔧 \`${name}\``, { parse_mode: "Markdown" })
-        .catch(() => {});
+      toolNames.push(name);
+      updateStreamingMessage(renderWorkingText());
     },
 
-    onToolResult(_id: string, name: string, _result: unknown): void {
+    onToolResult(_id: string, _name: string, _result: unknown): void {
       startTyping();
     },
 
     onStepUsage(_tools: string[], _usage: UsageStats): void {
-      // No per-step usage on Telegram
+      // No per-step usage on Telegram.
     },
 
     onFinalUsage(usage: UsageStats): void {
-      finalUsage = usage;
-      usageReported = true;
       if (onUsage) onUsage(usage);
     },
 
     onError(message: string): void {
       stopTyping();
-      const mid = getStreamingMessageId();
-      const errorText = `❌ *Error:* ${escapeMarkdown(message.slice(0, 1000))}`;
-      if (mid) {
-        editSafe(bot, chatId, mid, errorText, "Markdown");
-      } else {
-        sendSafe(bot, chatId, errorText, "Markdown");
-      }
+      const errorText = `Error: ${escapeMarkdown(message.slice(0, 1000))}`;
+      editChain = editChain
+        .then(async () => {
+          const id = await ensureStreamingMessage(errorText);
+          if (id) {
+            await editSafe(bot, chatId, id, errorText, "Markdown");
+          }
+        })
+        .catch(() => {});
     },
 
     onDone(): void {
       stopTyping();
-
-      // Send usage summary if available
-      if (finalUsage) {
-        const usageLine =
-          `📊 *Usage:* ${finalUsage.inputTokens} in · ${finalUsage.outputTokens} out · ${finalUsage.totalTokens} total`
-          + (finalUsage.cachedInputTokens ? ` (${finalUsage.cachedInputTokens} cached)` : "");
-        sendSafe(bot, chatId, usageLine, "Markdown");
-      }
+      finalizeLongMessage();
     },
   };
 }

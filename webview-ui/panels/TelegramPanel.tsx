@@ -27,6 +27,7 @@ export function TelegramPanel({ state, actions }: { state: ChatState; actions: A
     allowedChatIds: state.telegramStatus.allowedChatIds,
     workspacePath: state.telegramStatus.workspacePath,
     startOnActivation: state.telegramStatus.startOnActivation,
+    proxyUrl: state.telegramStatus.proxyUrl,
   }));
   const [idsText, setIdsText] = useState(
     state.telegramStatus.allowedChatIds.join(", ")
@@ -43,12 +44,14 @@ export function TelegramPanel({ state, actions }: { state: ChatState; actions: A
       allowedChatIds: state.telegramStatus.allowedChatIds,
       workspacePath: state.telegramStatus.workspacePath,
       startOnActivation: state.telegramStatus.startOnActivation,
+      proxyUrl: state.telegramStatus.proxyUrl,
     }));
     setIdsText(state.telegramStatus.allowedChatIds.join(", "));
   }, [
     state.telegramStatus.allowedChatIds,
     state.telegramStatus.workspacePath,
     state.telegramStatus.startOnActivation,
+    state.telegramStatus.proxyUrl,
   ]);
 
   const st = state.telegramStatus;
@@ -134,6 +137,21 @@ export function TelegramPanel({ state, actions }: { state: ChatState; actions: A
               setConfigDraft((prev) => ({ ...prev, startOnActivation: e.currentTarget.checked }))
             }
           />
+
+          <div>
+            <Text size="xs" fw={600} mb={4}>Proxy URL</Text>
+            <TextInput
+              size="xs"
+              placeholder="http://127.0.0.1:7890"
+              value={configDraft.proxyUrl}
+              onChange={(e) =>
+                setConfigDraft((prev) => ({ ...prev, proxyUrl: e.currentTarget.value }))
+              }
+            />
+            <Text size="xs" c="dimmed" mt={2}>
+              HTTP/HTTPS proxy for Telegram API. Leave empty for direct connection.
+            </Text>
+          </div>
 
           <Group justify="flex-end">
             <Button
