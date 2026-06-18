@@ -21,11 +21,18 @@ export interface AgentCallbacks {
   onDone(): void;
 }
 
+/** Image attachment for multimodal content. */
+export interface ImageAttachment {
+  imageUrl: string;
+  mimeType?: string;
+}
+
 export interface RunOptions {
   model: LanguageModel;
   systemMessage: ModelMessage;
   tools: ToolSet;
   userText: string;
+  images?: ImageAttachment[];
   maxSteps: number;
   maxOutputTokens?: number;
   providerOptions?: Record<string, Record<string, unknown>>;
@@ -57,7 +64,25 @@ export class AgentSession {
   }
 
   async run(opts: RunOptions): Promise<void> {
-    this.messages.push({ role: "user", content: opts.userText });
+    // Build user message content with support for images
+    let userContent: string | Array<{ type: "text"; text: string } | { type: "image"; image: string; mimeType?: string }>;
+    
+    if (opts.images && opts.images.length > 0) {
+      // Multimodal content with images
+      userContent = [
+        { type: "text", text: opts.userText },
+        ...opts.images.map((img) => ({
+          type: "image" as const,
+          image: img.imageUrl,
+          mimeType: img.mimeType,
+        })),
+      ];
+    } else {
+      // Plain text content
+      userContent = opts.userText;
+    }
+    
+    this.messages.push({ role: "user", content: userContent });
 
     try {
       const result = streamText({

@@ -19,6 +19,30 @@ export interface ProviderInfo {
   requiresApiKey: boolean;
   exampleModels: string[];
   capabilities: ProviderCapabilities;
+  supportsBaseUrl: boolean;
+}
+
+export interface ProviderConnectionSettings {
+  provider: string;
+  model: string;
+  baseUrl: string;
+  apiKey?: string;
+}
+
+export interface FileAnalysisSettings {
+  enabled: boolean;
+  provider: string;
+  model: string;
+  baseUrl: string;
+  hasApiKey: boolean;
+}
+
+export interface FileAnalysisUpdate {
+  enabled: boolean;
+  provider: string;
+  model: string;
+  baseUrl: string;
+  apiKey?: string;
 }
 
 export interface AgentInfo {
@@ -87,6 +111,12 @@ export interface SessionSummary {
 export interface Attachment {
   path: string;
   content: string;
+  /** For image attachments, the base64-encoded data URL. */
+  imageUrl?: string;
+  /** Base64 file payload for model-side file analysis (e.g. PDFs). */
+  dataBase64?: string;
+  /** MIME type for image or file attachments (e.g., "image/png", "application/pdf"). */
+  mimeType?: string;
 }
 
 /** A workspace file or folder reference for the # mention picker. */
@@ -123,6 +153,8 @@ export type WebviewToHost =
   | { type: "newChat" }
   | { type: "selectProvider"; provider: string }
   | { type: "selectModel"; model: string }
+  | { type: "saveProviderSettings"; settings: ProviderConnectionSettings }
+  | { type: "saveFileAnalysisSettings"; settings: FileAnalysisUpdate }
   | { type: "listModels"; provider: string; refresh?: boolean }
   | { type: "selectAgent"; agentId: string }
   | { type: "selectReasoning"; effort: ReasoningEffort }
@@ -162,6 +194,8 @@ export type HostToWebview =
       agents: AgentInfo[];
       agentId: string;
       hasApiKey: boolean;
+      baseUrl: string;
+      fileAnalysis: FileAnalysisSettings;
       indexSize: number;
       reasoning: ReasoningEffort;
       permission: PermissionLevel;
@@ -188,4 +222,14 @@ export type HostToWebview =
   | { type: "usage"; turn: UsageStats; session: UsageStats; steps: StepUsage[] }
   | { type: "agentsList"; agents: AgentDTO[]; toolCatalog: ToolCatalogItem[] }
   | { type: "skillsList"; skills: SkillDTO[] }
-  | { type: "mcpStatus"; servers: McpServerStatus[] };
+  | { type: "mcpStatus"; servers: McpServerStatus[] }
+  | { type: "workingSet"; files: WorkingSetFile[] };
+
+/** A file in the working set with its modification status. */
+export interface WorkingSetFile {
+  path: string;
+  status: "created" | "modified" | "deleted" | "moved";
+  timestamp: number;
+  /** For moved files, the original path. */
+  fromPath?: string;
+}

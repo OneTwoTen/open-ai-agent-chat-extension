@@ -1,6 +1,8 @@
 import { ActionIcon, Box, Group, Paper, Pill, Text, Textarea, Tooltip } from "@mantine/core";
-import React, { useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { Attachment, FileRef } from "../../src/shared/protocol";
+import { attachmentPreviewKind, attachmentShortName } from "./attachmentPreview";
+import { attachmentFromClipboardFile } from "./pasteAttachments";
 
 interface ComposerProps {
   busy: boolean;
@@ -11,6 +13,7 @@ interface ComposerProps {
   onAttachClick: () => void;
   onRemoveAttachment: (path: string) => void;
   onDropPaths: (paths: string[]) => void;
+  onAddAttachments: (attachments: Attachment[]) => void;
   onSearchFiles: (query: string) => void;
   draft?: { id: number; text: string };
 }
@@ -75,6 +78,7 @@ export function Composer({
   onAttachClick,
   onRemoveAttachment,
   onDropPaths,
+  onAddAttachments,
   onSearchFiles,
   draft,
 }: ComposerProps) {
@@ -83,6 +87,8 @@ export function Composer({
   const [dragging, setDragging] = useState(false);
   const [mention, setMention] = useState<Mention | null>(null);
   const [highlight, setHighlight] = useState(0);
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   React.useEffect(() => {
     if (draft) {
@@ -157,6 +163,55 @@ export function Composer({
     setMention(null);
   };
 
+  const toggleRecording = useCallback(() => {
+    if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
+      alert("Speech recognition is not supported in this browser.");
+      return;
+    }
+
+    if (isRecording && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    let finalTranscript = value;
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let interimTranscript = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+      setValue(finalTranscript + interimTranscript);
+    };
+
+    recognition.onerror = (event) => {
+      console.error("Speech recognition error:", event.error);
+      setIsRecording(false);
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+      recognitionRef.current = null;
+    };
+
+    recognition.start();
+    setIsRecording(true);
+  }, [isRecording, value]);
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (listLen > 0) {
       if (e.key === "ArrowDown") {
@@ -207,8 +262,52 @@ export function Composer({
     }
   };
 
+  const onPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(e.clipboardData.files ?? []).filter((file) => file.size > 0);
+    if (files.length === 0) {
+      return;
+    }
+    e.preventDefault();
+    try {
+      const now = Date.now();
+      const pasted = await Promise.all(
+        files.map((file, index) => attachmentFromClipboardFile(file, index, now))
+      );
+      onAddAttachments(pasted);
+    } catch (err) {
+      console.error("Could not read pasted file", err);
+    }
+  };
+
   return (
     <Box p="sm" style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}>
+      {attachments.some((a) => attachmentPreviewKind(a) === "image") && (
+        <Group gap={6} mb={6} wrap="wrap" align="flex-start">
+          {attachments
+            .filter((a) => attachmentPreviewKind(a) === "image")
+            .map((a) => (
+              <Box key={a.path} className="attachment-thumb">
+                <img src={a.imageUrl} alt={attachmentShortName(a.path)} />
+                <Tooltip label={attachmentShortName(a.path)} withArrow>
+                  <Text size="10px" truncate className="attachment-thumb-label">
+                    {attachmentShortName(a.path)}
+                  </Text>
+                </Tooltip>
+                <ActionIcon
+                  className="attachment-remove"
+                  size="xs"
+                  variant="filled"
+                  color="dark"
+                  radius="xl"
+                  onClick={() => onRemoveAttachment(a.path)}
+                  aria-label={`Remove ${attachmentShortName(a.path)}`}
+                >
+                  ×
+                </ActionIcon>
+              </Box>
+            ))}
+        </Group>
+      )}
       {attachments.length > 0 && (
         <Pill.Group mb={6}>
           {attachments.map((a) => (
@@ -279,6 +378,17 @@ export function Composer({
               <PaperclipIcon />
             </ActionIcon>
           </Tooltip>
+          <Tooltip label={isRecording ? "Stop recording" : "Voice input"} withArrow>
+            <ActionIcon
+              variant={isRecording ? "filled" : "subtle"}
+              color={isRecording ? "red" : undefined}
+              size="lg"
+              onClick={toggleRecording}
+              aria-label="Voice input"
+            >
+              <MicIcon />
+            </ActionIcon>
+          </Tooltip>
           <Textarea
             ref={ref}
             autosize
@@ -289,6 +399,7 @@ export function Composer({
             value={value}
             onChange={onChange}
             onKeyDown={onKeyDown}
+            onPaste={onPaste}
           />
           {busy ? (
             <Tooltip label="Stop" withArrow>
@@ -311,7 +422,7 @@ export function Composer({
         </Group>
       </Box>
       <Text size="10px" c="dimmed" mt={4}>
-        Enter to send · Shift+Enter newline · # file · / commands
+        Enter to send · Shift+Enter newline · paste/attach/drop files · # file · / commands
       </Text>
     </Box>
   );
@@ -376,6 +487,15 @@ function PaperclipIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    </svg>
+  );
+}
+function MicIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+      <line x1="12" x2="12" y1="19" y2="22" />
     </svg>
   );
 }

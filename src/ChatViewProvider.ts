@@ -14,6 +14,11 @@ import {
   buildSystemMessage,
   maxOutputTokensFor,
 } from "./agent/providerTuning";
+import {
+  analyzeAttachments,
+  FileAnalysisSettings,
+  isAttachmentAnalyzable,
+} from "./agent/fileAnalysis";
 import { loadProjectRules, SkillManager } from "./agent/skills";
 import { buildTools, TOOL_CATALOG, ToolContext } from "./agent/tools";
 import {
@@ -24,22 +29,28 @@ import {
   getActiveProviderId,
   getEmbeddingModel,
   getModelFor,
+  getModelForConnection,
   hasCredential,
+  isProviderId,
   PROVIDERS,
   PROVIDER_IDS,
   ProviderId,
+  secretKeyFor,
 } from "./providers";
 import { SessionStore, titleFrom } from "./sessions";
 import {
   AgentDTO,
   Attachment,
+  FileAnalysisUpdate,
   HostToWebview,
   PermissionLevel,
+  ProviderConnectionSettings,
   ReasoningEffort,
   ToolCatalogItem,
   TranscriptItem,
   UsageStats,
   WebviewToHost,
+  WorkingSetFile,
 } from "./shared/protocol";
 
 const ZERO_USAGE: UsageStats = {
@@ -92,6 +103,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private turnUsage: UsageStats = { ...ZERO_USAGE };
   private turnSteps: { tools: string[]; usage: UsageStats }[] = [];
   private readonly modelCache = new Map<ProviderId, string[]>();
+  private workingSet: WorkingSetFile[] = [];
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.currentSessionId = this.newId();
@@ -148,7 +160,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.toolIndexById.clear();
     this.currentSessionId = this.newId();
     this.sessionUsage = { ...ZERO_USAGE };
+    this.workingSet = [];
     this.post({ type: "cleared" });
+    this.post({ type: "workingSet", files: [] });
   }
 
   async buildIndexNow(): Promise<void> {
@@ -206,6 +220,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   // ---- Message routing ------------------------------------------------
   private async handleMessage(msg: WebviewToHost): Promise<void> {
+    try {
+      await this.dispatchMessage(msg);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.post({ type: "error", message });
+      vscode.window.showErrorMessage(`AI Agent Chat: ${message}`);
+    }
+  }
+
+  private async dispatchMessage(msg: WebviewToHost): Promise<void> {
     switch (msg.type) {
       case "ready":
         await this.sendInit();
@@ -232,6 +256,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         break;
       case "selectModel":
         await this.config().update("model", msg.model, vscode.ConfigurationTarget.Global);
+        break;
+      case "saveProviderSettings":
+        await this.saveProviderSettings(msg.settings);
+        break;
+      case "saveFileAnalysisSettings":
+        await this.saveFileAnalysisSettings(msg.settings);
         break;
       case "listModels":
         await this.sendModels(msg.provider as ProviderId, !!msg.refresh);
@@ -364,6 +394,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         requiresApiKey: PROVIDERS[id].requiresApiKey,
         exampleModels: PROVIDERS[id].exampleModels,
         capabilities: CAPABILITIES[id],
+        supportsBaseUrl: PROVIDERS[id].supportsBaseUrl,
       })),
       provider,
       model,
@@ -375,6 +406,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       })),
       agentId: this.agentId,
       hasApiKey: await hasCredential(provider, this.context.secrets),
+      baseUrl: this.config().get<string>("baseUrl", ""),
+      fileAnalysis: await this.getFileAnalysisSettings(),
       indexSize,
       reasoning: this.reasoning,
       permission: this.permission,
@@ -392,6 +425,47 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  private async saveProviderSettings(settings: ProviderConnectionSettings): Promise<void> {
+    if (!isProviderId(settings.provider)) {
+      throw new Error(`Unknown provider '${settings.provider}'.`);
+    }
+    const provider = settings.provider;
+    await this.config().update("provider", provider, vscode.ConfigurationTarget.Global);
+    await this.config().update("model", settings.model.trim(), vscode.ConfigurationTarget.Global);
+    await this.config().update("baseUrl", settings.baseUrl.trim(), vscode.ConfigurationTarget.Global);
+    if (settings.apiKey?.trim()) {
+      await this.context.secrets.store(secretKeyFor(provider), settings.apiKey.trim());
+    }
+    await this.sendInit();
+  }
+
+  private async saveFileAnalysisSettings(settings: FileAnalysisUpdate): Promise<void> {
+    if (!isProviderId(settings.provider)) {
+      throw new Error(`Unknown file analysis provider '${settings.provider}'.`);
+    }
+    const config = this.config();
+    await config.update(
+      "fileAnalysis.enabled",
+      settings.enabled,
+      vscode.ConfigurationTarget.Global
+    );
+    await config.update(
+      "fileAnalysis.provider",
+      settings.provider,
+      vscode.ConfigurationTarget.Global
+    );
+    await config.update("fileAnalysis.model", settings.model.trim(), vscode.ConfigurationTarget.Global);
+    await config.update(
+      "fileAnalysis.baseUrl",
+      settings.baseUrl.trim(),
+      vscode.ConfigurationTarget.Global
+    );
+    if (settings.apiKey?.trim()) {
+      await this.context.secrets.store("aiAgentChat.fileAnalysis.apiKey", settings.apiKey.trim());
+    }
+    await this.sendInit();
+  }
+
   private async sendModels(provider: ProviderId, refresh: boolean): Promise<void> {
     let models = refresh ? undefined : this.modelCache.get(provider);
     if (!models) {
@@ -405,6 +479,64 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
     }
     this.post({ type: "models", provider, models, fetched: models.length > 0 });
+  }
+
+  private async getFileAnalysisSettings(): Promise<FileAnalysisSettings> {
+    const configured = this.config().get<string>("fileAnalysis.provider", "openai");
+    const provider = isProviderId(configured) ? configured : "openai";
+    return {
+      enabled: this.config().get<boolean>("fileAnalysis.enabled", true),
+      provider,
+      model:
+        this.config().get<string>("fileAnalysis.model", "") ||
+        PROVIDERS[provider].defaultModel,
+      baseUrl: this.config().get<string>("fileAnalysis.baseUrl", ""),
+      hasApiKey: await this.hasFileAnalysisCredential(provider),
+    };
+  }
+
+  private async hasFileAnalysisCredential(provider: ProviderId): Promise<boolean> {
+    if (!PROVIDERS[provider].requiresApiKey) {
+      return true;
+    }
+    return !!(
+      (await this.context.secrets.get("aiAgentChat.fileAnalysis.apiKey")) ||
+      (await this.context.secrets.get(secretKeyFor(provider)))
+    );
+  }
+
+  private async prepareAttachmentAnalysis(attachments: Attachment[]): Promise<Attachment[]> {
+    if (!attachments.some(isAttachmentAnalyzable)) {
+      return attachments;
+    }
+    const settings = await this.getFileAnalysisSettings();
+    if (!settings.enabled) {
+      return attachments;
+    }
+    try {
+      const provider = settings.provider as ProviderId;
+      const apiKey =
+        (await this.context.secrets.get("aiAgentChat.fileAnalysis.apiKey")) ||
+        (await this.context.secrets.get(secretKeyFor(provider)));
+      const model = await getModelForConnection(provider, settings.model, this.context.secrets, {
+        apiKey,
+        baseURL: settings.baseUrl.trim() || undefined,
+      });
+      const signal = this.abortController?.signal ?? new AbortController().signal;
+      return await analyzeAttachments(
+        attachments,
+        { model, providerId: provider, modelId: settings.model },
+        signal,
+        (text) => this.post({ type: "note", text })
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.post({
+        type: "note",
+        text: `File analysis failed; sending original attachment context. ${message}`,
+      });
+      return attachments;
+    }
   }
 
   // ---- Chat turn ------------------------------------------------------
@@ -445,7 +577,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       };
       const tools = { ...buildTools(toolCtx, agent.tools), ...services.mcp.getTools() };
 
-      const userText = this.composeUserText(text, attachments);
       this.transcript.push({ kind: "user", text, attachments: attachments.map((a) => a.path) });
       this.openAssistant = null;
       this.turnUsage = { ...ZERO_USAGE };
@@ -455,11 +586,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.abortController = new AbortController();
       this.post({ type: "busy", value: true });
 
+      attachments = await this.prepareAttachmentAnalysis(attachments);
+      const userText = this.composeUserText(text, attachments);
+
+      // If file analysis is disabled or unavailable, still allow direct image input.
+      const imageAttachments = attachments
+        .filter((a) => a.imageUrl)
+        .map((a) => ({
+          imageUrl: a.imageUrl!,
+          mimeType: a.mimeType,
+        }));
+
       await this.session.run({
         model: prep.model,
         systemMessage: prep.systemMessage,
         tools,
         userText,
+        images: imageAttachments.length > 0 ? imageAttachments : undefined,
         maxSteps,
         maxOutputTokens: prep.maxOutputTokens,
         providerOptions: prep.providerOptions,
@@ -608,6 +751,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       memory: services.memory,
       skills: services.skills,
       onNote: (m) => this.post({ type: "note", text: m }),
+      trackFileChange: (path, status, fromPath) => this.trackFileChange(path, status, fromPath),
     };
   }
 
@@ -724,6 +868,35 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       // Best-effort cleanup only; the files live in extension storage.
     }
     return choice === "Accept";
+  }
+
+  private trackFileChange(
+    filePath: string,
+    status: "created" | "modified" | "deleted" | "moved",
+    fromPath?: string
+  ): void {
+    const existing = this.workingSet.find((f) => f.path === filePath);
+    if (existing) {
+      // Update existing entry
+      if (status === "deleted") {
+        this.workingSet = this.workingSet.filter((f) => f.path !== filePath);
+      } else {
+        existing.status = status;
+        existing.timestamp = Date.now();
+        if (fromPath) {
+          existing.fromPath = fromPath;
+        }
+      }
+    } else if (status !== "deleted") {
+      // Add new entry
+      this.workingSet.push({
+        path: filePath,
+        status,
+        timestamp: Date.now(),
+        fromPath,
+      });
+    }
+    this.post({ type: "workingSet", files: [...this.workingSet] });
   }
 
   // ---- MCP ------------------------------------------------------------
@@ -847,21 +1020,76 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
     const attachments: Attachment[] = [];
     for (const p of paths) {
-      try {
-        const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(p));
-        let content = Buffer.from(bytes).toString("utf8");
-        if (content.length > 40_000) {
-          content = content.slice(0, 40_000) + "\n[...truncated]";
-        }
-        const relPath = root ? path.relative(root, p).replace(/\\/g, "/") : p;
-        attachments.push({ path: relPath || p, content });
-      } catch {
-        // skip directories / unreadable
-      }
+      attachments.push(...(await this.resolvePathAttachments(p, root, 40)));
     }
     if (attachments.length > 0) {
       this.post({ type: "attachmentsResolved", attachments });
     }
+  }
+
+  private async resolvePathAttachments(
+    fsPath: string,
+    root: string,
+    remaining: number
+  ): Promise<Attachment[]> {
+    if (remaining <= 0 || this.shouldSkipAttachedPath(fsPath)) {
+      return [];
+    }
+    try {
+      const uri = vscode.Uri.file(fsPath);
+      const stat = await vscode.workspace.fs.stat(uri);
+      if (stat.type === vscode.FileType.Directory) {
+        const entries = await vscode.workspace.fs.readDirectory(uri);
+        const out: Attachment[] = [];
+        for (const [name] of entries) {
+          if (out.length >= remaining) {
+            break;
+          }
+          const child = path.join(fsPath, name);
+          out.push(...(await this.resolvePathAttachments(child, root, remaining - out.length)));
+        }
+        return out;
+      }
+      return [await this.readAttachmentFile(fsPath, root)];
+    } catch {
+      return [];
+    }
+  }
+
+  private async readAttachmentFile(fsPath: string, root: string): Promise<Attachment> {
+    const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(fsPath));
+    const relPath = root ? path.relative(root, fsPath).replace(/\\/g, "/") : fsPath;
+    const mimeType = mimeTypeForPath(fsPath);
+    const base64 = Buffer.from(bytes).toString("base64");
+
+    if (mimeType.startsWith("image/")) {
+      return {
+        path: relPath || fsPath,
+        content: `[Image: ${path.basename(fsPath)}]`,
+        imageUrl: `data:${mimeType};base64,${base64}`,
+        mimeType,
+      };
+    }
+
+    if (mimeType === "application/pdf" || isLikelyBinary(bytes)) {
+      return {
+        path: relPath || fsPath,
+        content: `[File: ${path.basename(fsPath)}]`,
+        dataBase64: base64,
+        mimeType,
+      };
+    }
+
+    let content = Buffer.from(bytes).toString("utf8");
+    if (content.length > 40_000) {
+      content = content.slice(0, 40_000) + "\n[...truncated]";
+    }
+    return { path: relPath || fsPath, content, mimeType };
+  }
+
+  private shouldSkipAttachedPath(fsPath: string): boolean {
+    const parts = fsPath.split(/[\\/]/).map((p) => p.toLowerCase());
+    return parts.some((p) => [".git", "node_modules", "dist", "out", "build"].includes(p));
   }
 
   /** Search workspace files and folders for the # mention picker. */
@@ -1266,6 +1494,36 @@ function dtoToAgent(d: AgentDTO): import("./agent/agents").AgentDefinition {
     skills: d.skills,
     subAgents: d.subAgents,
   };
+}
+
+function mimeTypeForPath(fsPath: string): string {
+  const ext = path.extname(fsPath).toLowerCase();
+  const map: Record<string, string> = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".svg": "image/svg+xml",
+    ".pdf": "application/pdf",
+    ".json": "application/json",
+    ".md": "text/markdown",
+    ".txt": "text/plain",
+    ".csv": "text/csv",
+    ".html": "text/html",
+    ".css": "text/css",
+    ".js": "text/javascript",
+    ".ts": "text/typescript",
+    ".tsx": "text/typescript",
+    ".jsx": "text/javascript",
+  };
+  return map[ext] ?? "text/plain";
+}
+
+function isLikelyBinary(bytes: Uint8Array): boolean {
+  const sample = bytes.slice(0, Math.min(bytes.length, 2048));
+  return sample.some((b) => b === 0);
 }
 
 function getNonce(): string {

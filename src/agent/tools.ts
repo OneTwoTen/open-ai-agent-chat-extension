@@ -36,6 +36,8 @@ export interface ToolContext {
   allowedSubAgents?: string[];
   /** Runs a sub-agent in an isolated context and returns its final text. */
   delegate?: (agentId: string, task: string) => Promise<string>;
+  /** Track a file modification for the working set. */
+  trackFileChange?: (path: string, status: "created" | "modified" | "deleted" | "moved", fromPath?: string) => void;
 }
 
 const CONFIRM_TITLES: Record<string, string> = {
@@ -113,6 +115,7 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
           return "Write rejected by the user.";
         }
         await vscode.workspace.fs.writeFile(vscode.Uri.file(fp), Buffer.from(content, "utf8"));
+        ctx.trackFileChange?.(p, original ? "modified" : "created");
         return `Wrote ${content.length} chars to ${p}.`;
       },
     }),
@@ -147,6 +150,7 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
           return "Edit rejected by the user.";
         }
         await vscode.workspace.fs.writeFile(uri, Buffer.from(updated, "utf8"));
+        ctx.trackFileChange?.(p, "modified");
         return `Edited ${p} (${replaceAll ? occurrences : 1} replacement).`;
       },
     }),
@@ -163,6 +167,7 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
           recursive: !!recursive,
           useTrash: true,
         });
+        ctx.trackFileChange?.(p, "deleted");
         return `Deleted ${p}.`;
       },
     }),
@@ -190,6 +195,7 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
           return "Move declined by the user.";
         }
         await vscode.workspace.fs.rename(fromUri, toUri, { overwrite: false });
+        ctx.trackFileChange?.(to, "moved", from);
         return `Moved ${from} -> ${to}.`;
       },
     }),

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchModels } from "../src/providers/models";
+import { isProviderId } from "../src/providers/catalog";
 
 const secrets = { get: async () => "KEY" } as unknown as import("vscode").SecretStorage;
 const noSecrets = { get: async () => undefined } as unknown as import("vscode").SecretStorage;
@@ -12,6 +13,14 @@ function mockFetchOnce(shape: unknown, ok = true) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("provider ids", () => {
+  it("rejects unknown provider ids before settings use them", () => {
+    expect(isProviderId("openai")).toBe(true);
+    expect(isProviderId("not-a-provider")).toBe(false);
+    expect(isProviderId("")).toBe(false);
+  });
 });
 
 describe("fetchModels", () => {

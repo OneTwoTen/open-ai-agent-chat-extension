@@ -7,6 +7,11 @@ function cfg<T>(key: string, fallback: T): T {
   return vscode.workspace.getConfiguration("aiAgentChat").get<T>(key, fallback);
 }
 
+interface ProviderBuildOptions {
+  apiKey?: string;
+  baseURL?: string;
+}
+
 export function getActiveProviderId(): ProviderId {
   return cfg<ProviderId>("provider", "openai");
 }
@@ -24,10 +29,11 @@ export function getActiveModelId(provider: ProviderId): string {
  */
 async function buildProvider(
   id: ProviderId,
-  secrets: vscode.SecretStorage
+  secrets: vscode.SecretStorage,
+  options: ProviderBuildOptions = {}
 ): Promise<(modelId: string) => LanguageModel> {
-  const apiKey = await secrets.get(secretKeyFor(id));
-  const baseURL = cfg<string>("baseUrl", "") || undefined;
+  const apiKey = options.apiKey ?? (await secrets.get(secretKeyFor(id)));
+  const baseURL = (options.baseURL ?? cfg<string>("baseUrl", "")) || undefined;
 
   switch (id) {
     case "openai": {
@@ -140,6 +146,17 @@ export async function getModelFor(
   secrets: vscode.SecretStorage
 ): Promise<LanguageModel> {
   const provider = await buildProvider(providerId, secrets);
+  return provider(modelId || PROVIDERS[providerId].defaultModel);
+}
+
+/** Build a model using explicit connection overrides. */
+export async function getModelForConnection(
+  providerId: ProviderId,
+  modelId: string,
+  secrets: vscode.SecretStorage,
+  options: ProviderBuildOptions
+): Promise<LanguageModel> {
+  const provider = await buildProvider(providerId, secrets, options);
   return provider(modelId || PROVIDERS[providerId].defaultModel);
 }
 

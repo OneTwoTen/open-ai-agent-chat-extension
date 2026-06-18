@@ -1,9 +1,11 @@
 import * as vscode from "vscode";
 import { ChatViewProvider } from "./ChatViewProvider";
 import { getActiveProviderId, PROVIDERS, PROVIDER_IDS, ProviderId, secretKeyFor } from "./providers";
+import { TelegramBotManager } from "./telegram/bot";
 
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new ChatViewProvider(context);
+  const telegramBot = new TelegramBotManager(context);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(ChatViewProvider.viewType, provider, {
@@ -43,12 +45,36 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       await context.secrets.delete(secretKeyFor(picked));
       vscode.window.showInformationMessage(`API key cleared for ${PROVIDERS[picked].label}.`);
-    })
+    }),
+    // ---- Telegram commands -------------------------------------------
+    vscode.commands.registerCommand("aiAgentChat.startTelegram", () => telegramBot.start()),
+    vscode.commands.registerCommand("aiAgentChat.stopTelegram", () => telegramBot.stop()),
+    vscode.commands.registerCommand("aiAgentChat.setTelegramToken", async () => {
+      const token = await vscode.window.showInputBox({
+        title: "Set Telegram Bot Token",
+        prompt: "Enter your Telegram bot token from @BotFather.",
+        password: true,
+        ignoreFocusOut: true,
+        placeHolder: "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz",
+      });
+      if (token?.trim()) {
+        await context.secrets.store("aiAgentChat.telegram.token", token.trim());
+        vscode.window.showInformationMessage("Telegram bot token saved.");
+        // Auto-start if not running
+        if (!telegramBot.isRunning) {
+          await telegramBot.start();
+        }
+      }
+    }),
+    telegramBot,
   );
+
+  // Auto-start Telegram bot if configured
+  telegramBot.tryAutoStart();
 }
 
 export function deactivate(): void {
-  // nothing to clean up
+  // Telegram bot cleanup is handled by its disposable registration
 }
 
 async function pickProvider(): Promise<ProviderId | undefined> {

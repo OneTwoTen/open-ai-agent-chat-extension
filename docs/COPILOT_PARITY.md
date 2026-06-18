@@ -36,6 +36,11 @@ A study of GitHub Copilot Chat's UX and how this extension compares, with priori
 | Export conversation to Markdown | done |
 | Analyze chats -> quality review + improve agents/skills | done |
 | `@workspace`, `@terminal`, `@vscode` routing shortcuts | baseline done |
+| Working set for edit mode (tracked modified files) | done |
+| Image attachments for vision-capable models | done |
+| Per-message token cost display | done |
+| Streaming references panel (tools + files used) | done |
+| Voice input (speech-to-text) | done |
 
 ### Placement on the right
 
@@ -56,14 +61,14 @@ VS Code does not let an extension force the Secondary Side Bar via the manifest.
 6. Inline diff / apply edits: done. `write_file` and `edit_file` open a VS Code diff preview and require Accept/Reject before writing.
 7. Inline Chat: done. `AI Agent: Inline Chat` (`Ctrl+I` / `Cmd+I`) sends the active selection/file as context.
 8. Quick Chat: done. `AI Agent: Quick Chat` opens a transient input for one-off questions.
-9. Working set for edit mode: pending.
-10. Image attachments for vision-capable models: pending.
+9. Working set for edit mode: done. Modified files are tracked and displayed in a collapsible panel.
+10. Image attachments for vision-capable models: done. Images are converted to base64 data URLs and sent to vision-capable providers.
 
 ### P3 - polish
 
 11. `@` participants: baseline done for `@workspace`, `@terminal`, and `@vscode` routing shortcuts.
-12. Streaming references panel: partially covered by tool call panels; richer per-answer references are pending.
-13. Voice input: pending. Export conversation to Markdown: done. Per-message token cost: pending.
+12. Streaming references panel: done. Collapsible panel showing tools used and files accessed during the response.
+13. Voice input: done. Speech-to-text via Web Speech API. Export conversation to Markdown: done. Per-message token cost: done. Estimated cost displayed with per-provider rates.
 14. Keybindings: done for inline chat, quick chat, and new chat.
 
 ## Suggested next step

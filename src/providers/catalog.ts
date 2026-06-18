@@ -192,6 +192,10 @@ export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
 
 export const PROVIDER_IDS = Object.keys(PROVIDERS) as ProviderId[];
 
+export function isProviderId(value: string): value is ProviderId {
+  return Object.prototype.hasOwnProperty.call(PROVIDERS, value);
+}
+
 /** What a provider can do — used for the capability display and gating. */
 export interface ProviderCapabilities {
   tools: boolean;

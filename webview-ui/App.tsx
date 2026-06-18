@@ -4,18 +4,25 @@ import {
   Autocomplete,
   Badge,
   Box,
+  Button,
+  Divider,
   Group,
   HoverCard,
+  Modal,
+  PasswordInput,
   Select,
   Stack,
   Tabs,
   Text,
+  TextInput,
   Tooltip,
+  Switch,
 } from "@mantine/core";
 import React, { useEffect, useMemo, useState } from "react";
 import { PermissionLevel, ReasoningEffort } from "../src/shared/protocol";
 import { HistoryDrawer } from "./components/HistoryDrawer";
 import { useController } from "./controller";
+import { modelOptionsForProvider } from "./panels/agentModelOptions";
 import { AgentsPanel } from "./panels/AgentsPanel";
 import { ChatPanel } from "./panels/ChatPanel";
 import { McpPanel } from "./panels/McpPanel";
@@ -38,6 +45,7 @@ export function App() {
   const { state, actions } = useController();
   const [tab, setTab] = useState<string>("chat");
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const activeProvider = state.providers.find((p) => p.id === state.provider);
   const caps = activeProvider?.capabilities;
@@ -91,6 +99,16 @@ export function App() {
               aria-label="Refresh models"
             >
               <RefreshIcon />
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label="Provider settings" withArrow>
+            <ActionIcon
+              variant="subtle"
+              size="lg"
+              onClick={() => setSettingsOpen(true)}
+              aria-label="Provider settings"
+            >
+              <SettingsIcon />
             </ActionIcon>
           </Tooltip>
           <CapabilityInfo caps={caps} providerLabel={activeProvider?.label ?? state.provider} />
@@ -188,7 +206,182 @@ export function App() {
         onDelete={actions.deleteSession}
         onAnalyze={actions.analyzeSessions}
       />
+      <ProviderSettingsModal
+        opened={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        state={state}
+        actions={actions}
+      />
     </Box>
+  );
+}
+
+function ProviderSettingsModal({
+  opened,
+  onClose,
+  state,
+  actions,
+}: {
+  opened: boolean;
+  onClose: () => void;
+  state: ReturnType<typeof useController>["state"];
+  actions: ReturnType<typeof useController>["actions"];
+}) {
+  const [providerKey, setProviderKey] = useState("");
+  const [fileKey, setFileKey] = useState("");
+  const [main, setMain] = useState({
+    provider: state.provider,
+    model: state.model,
+    baseUrl: state.baseUrl,
+  });
+  const [file, setFile] = useState({
+    enabled: state.fileAnalysis.enabled,
+    provider: state.fileAnalysis.provider,
+    model: state.fileAnalysis.model,
+    baseUrl: state.fileAnalysis.baseUrl,
+  });
+
+  useEffect(() => {
+    if (!opened) {
+      return;
+    }
+    setMain({ provider: state.provider, model: state.model, baseUrl: state.baseUrl });
+    setFile({
+      enabled: state.fileAnalysis.enabled,
+      provider: state.fileAnalysis.provider,
+      model: state.fileAnalysis.model,
+      baseUrl: state.fileAnalysis.baseUrl,
+    });
+    setProviderKey("");
+    setFileKey("");
+  }, [opened, state.provider, state.model, state.baseUrl, state.fileAnalysis]);
+
+  const providers = state.providers.map((p) => ({ value: p.id, label: p.label }));
+  const mainModelData = useMemo(
+    () =>
+      modelOptionsForProvider({
+        providerId: main.provider,
+        providers: state.providers,
+        modelsByProvider: state.modelsByProvider,
+      }),
+    [main.provider, state.providers, state.modelsByProvider]
+  );
+  const fileModelData = useMemo(
+    () =>
+      modelOptionsForProvider({
+        providerId: file.provider,
+        providers: state.providers,
+        modelsByProvider: state.modelsByProvider,
+      }),
+    [file.provider, state.providers, state.modelsByProvider]
+  );
+  const save = () => {
+    actions.saveProviderSettings({ ...main, apiKey: providerKey });
+    actions.saveFileAnalysisSettings({ ...file, apiKey: fileKey });
+    onClose();
+  };
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Model settings" centered size="lg">
+      <Stack gap="sm">
+        <Text size="xs" fw={700}>Main agent model</Text>
+        <Group gap="xs" grow>
+          <Select
+            size="xs"
+            label="Provider"
+            data={providers}
+            value={main.provider}
+            onChange={(v) => {
+              if (!v) return;
+              setMain((s) => ({ ...s, provider: v }));
+              actions.listModels(v);
+            }}
+            allowDeselect={false}
+          />
+          <Autocomplete
+            size="xs"
+            label="Model"
+            data={mainModelData}
+            value={main.model}
+            onChange={(value) => setMain((s) => ({ ...s, model: value }))}
+            limit={50}
+            maxDropdownHeight={280}
+            comboboxProps={{ withinPortal: true }}
+          />
+        </Group>
+        <TextInput
+          size="xs"
+          label="Base URL"
+          placeholder="https://api.openai.com/v1"
+          value={main.baseUrl}
+          onChange={(e) => setMain((s) => ({ ...s, baseUrl: e.currentTarget.value }))}
+        />
+        <PasswordInput
+          size="xs"
+          label={state.hasApiKey ? "API key (leave blank to keep current)" : "API key"}
+          value={providerKey}
+          onChange={(e) => setProviderKey(e.currentTarget.value)}
+        />
+
+        <Divider />
+
+        <Group justify="space-between" align="center">
+          <Text size="xs" fw={700}>File analysis model</Text>
+          <Switch
+            size="xs"
+            checked={file.enabled}
+            onChange={(e) => setFile((s) => ({ ...s, enabled: e.currentTarget.checked }))}
+          />
+        </Group>
+        <Group gap="xs" grow>
+          <Select
+            size="xs"
+            label="Provider"
+            data={providers}
+            value={file.provider}
+            onChange={(v) => {
+              if (!v) return;
+              setFile((s) => ({ ...s, provider: v }));
+              actions.listModels(v);
+            }}
+            allowDeselect={false}
+          />
+          <Autocomplete
+            size="xs"
+            label="Model"
+            data={fileModelData}
+            value={file.model}
+            onChange={(value) => setFile((s) => ({ ...s, model: value }))}
+            limit={50}
+            maxDropdownHeight={280}
+            comboboxProps={{ withinPortal: true }}
+          />
+        </Group>
+        <TextInput
+          size="xs"
+          label="Base URL"
+          placeholder="Use provider default"
+          value={file.baseUrl}
+          onChange={(e) => setFile((s) => ({ ...s, baseUrl: e.currentTarget.value }))}
+        />
+        <PasswordInput
+          size="xs"
+          label={
+            state.fileAnalysis.hasApiKey
+              ? "File model API key (leave blank to keep current)"
+              : "File model API key"
+          }
+          value={fileKey}
+          onChange={(e) => setFileKey(e.currentTarget.value)}
+        />
+        <Group justify="flex-end" gap="xs">
+          <Text size="xs" c="dimmed">
+            File analysis reads images/PDFs first, then sends markdown to the agent.
+          </Text>
+          <Button size="xs" onClick={save}>Save</Button>
+        </Group>
+      </Stack>
+    </Modal>
   );
 }
 
@@ -263,6 +456,14 @@ function RefreshIcon() {
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 12a9 9 0 1 1-2.64-6.36" />
       <path d="M21 3v6h-6" />
+    </svg>
+  );
+}
+function SettingsIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.2.63.78 1 1.43 1H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15Z" />
     </svg>
   );
 }

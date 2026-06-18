@@ -2,7 +2,9 @@ import { Box, Button, Group, Stack, Text } from "@mantine/core";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Composer } from "../components/Composer";
 import { MessageItem } from "../components/MessageItem";
+import { ReferencesPanel } from "../components/ReferencesPanel";
 import { UsageBar } from "../components/UsageBar";
+import { WorkingSet } from "../components/WorkingSet";
 import { Actions, ChatState } from "../controller";
 
 const SUGGESTIONS = [
@@ -14,6 +16,23 @@ const SUGGESTIONS = [
 export function ChatPanel({ state, actions }: { state: ChatState; actions: Actions }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<{ id: number; text: string } | undefined>();
+
+  // Extract tool calls for the current turn
+  const currentToolCalls = useMemo(() => {
+    // Get the last batch of tool calls (from the current assistant message)
+    const toolCalls: { kind: "tool"; id: string; name: string; args: unknown; result?: string; status: "running" | "done" }[] = [];
+    let foundAssistant = false;
+    for (let i = state.items.length - 1; i >= 0; i--) {
+      const item = state.items[i];
+      if (item.kind === "assistant") {
+        if (foundAssistant) break;
+        foundAssistant = true;
+      } else if (item.kind === "tool") {
+        toolCalls.unshift(item);
+      }
+    }
+    return toolCalls;
+  }, [state.items]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -106,7 +125,11 @@ export function ChatPanel({ state, actions }: { state: ChatState; actions: Actio
         )}
       </Box>
 
-      <UsageBar usage={state.usage} />
+      <UsageBar usage={state.usage} provider={state.provider} model={state.model} />
+      
+      <Box px="sm" pt={6}>
+        <ReferencesPanel toolCalls={currentToolCalls} />
+      </Box>
 
       <Group gap={6} px="sm" pt={6} wrap="wrap">
         <Button size="compact-xs" variant="default" onClick={() => actions.addContext("selection")}>
@@ -132,6 +155,10 @@ export function ChatPanel({ state, actions }: { state: ChatState; actions: Actio
         </Button>
       </Group>
 
+      <Box px="sm" pt={6}>
+        <WorkingSet files={state.workingSet} />
+      </Box>
+
       <Composer
         busy={state.busy}
         attachments={state.attachments}
@@ -141,6 +168,7 @@ export function ChatPanel({ state, actions }: { state: ChatState; actions: Actio
         onAttachClick={actions.pickFiles}
         onRemoveAttachment={actions.removeAttachment}
         onDropPaths={actions.dropPaths}
+        onAddAttachments={actions.addAttachments}
         onSearchFiles={actions.searchFiles}
         draft={draft}
       />

@@ -3,10 +3,13 @@ import {
   AgentDTO,
   AgentInfo,
   Attachment,
+  FileAnalysisSettings,
+  FileAnalysisUpdate,
   FileRef,
   McpServerConfig,
   McpServerStatus,
   PermissionLevel,
+  ProviderConnectionSettings,
   ProviderInfo,
   ReasoningEffort,
   SessionSummary,
@@ -15,6 +18,7 @@ import {
   ToolCatalogItem,
   TranscriptItem,
   UsageStats,
+  WorkingSetFile,
 } from "../src/shared/protocol";
 import { onHostMessage, vscode } from "./vscodeApi";
 
@@ -42,6 +46,8 @@ export interface ChatState {
   reasoning: ReasoningEffort;
   permission: PermissionLevel;
   hasApiKey: boolean;
+  baseUrl: string;
+  fileAnalysis: FileAnalysisSettings;
   indexSize: number;
   modelsByProvider: Record<string, string[]>;
   items: ChatItem[];
@@ -55,6 +61,7 @@ export interface ChatState {
   toolCatalog: ToolCatalogItem[];
   skills: SkillDTO[];
   mcpServers: McpServerStatus[];
+  workingSet: WorkingSetFile[];
 }
 
 const INITIAL: ChatState = {
@@ -66,6 +73,14 @@ const INITIAL: ChatState = {
   reasoning: "off",
   permission: "ask",
   hasApiKey: true,
+  baseUrl: "",
+  fileAnalysis: {
+    enabled: true,
+    provider: "openai",
+    model: "gpt-4o-mini",
+    baseUrl: "",
+    hasApiKey: false,
+  },
   indexSize: 0,
   modelsByProvider: {},
   items: [],
@@ -78,6 +93,7 @@ const INITIAL: ChatState = {
   toolCatalog: [],
   skills: [],
   mcpServers: [],
+  workingSet: [],
 };
 
 export interface Actions {
@@ -86,6 +102,8 @@ export interface Actions {
   newChat(): void;
   selectProvider(p: string): void;
   selectModel(m: string): void;
+  saveProviderSettings(settings: ProviderConnectionSettings): void;
+  saveFileAnalysisSettings(settings: FileAnalysisUpdate): void;
   listModels(provider: string, refresh?: boolean): void;
   selectAgent(id: string): void;
   selectReasoning(e: ReasoningEffort): void;
@@ -97,6 +115,7 @@ export interface Actions {
   deleteSession(id: string): void;
   pickFiles(): void;
   dropPaths(paths: string[]): void;
+  addAttachments(attachments: Attachment[]): void;
   removeAttachment(path: string): void;
   searchFiles(query: string): void;
   openInEditor(): void;
@@ -134,6 +153,8 @@ export function useController(): { state: ChatState; actions: Actions } {
             agents: msg.agents,
             agentId: msg.agentId,
             hasApiKey: msg.hasApiKey,
+            baseUrl: msg.baseUrl,
+            fileAnalysis: msg.fileAnalysis,
             indexSize: msg.indexSize,
             reasoning: msg.reasoning,
             permission: msg.permission,
@@ -223,6 +244,9 @@ export function useController(): { state: ChatState; actions: Actions } {
         case "mcpStatus":
           patch({ mcpServers: msg.servers });
           break;
+        case "workingSet":
+          patch({ workingSet: msg.files });
+          break;
       }
     });
     vscode.postMessage({ type: "ready" });
@@ -258,6 +282,10 @@ export function useController(): { state: ChatState; actions: Actions } {
       patch({ model: m });
       vscode.postMessage({ type: "selectModel", model: m });
     },
+    saveProviderSettings: (settings) =>
+      vscode.postMessage({ type: "saveProviderSettings", settings }),
+    saveFileAnalysisSettings: (settings) =>
+      vscode.postMessage({ type: "saveFileAnalysisSettings", settings }),
     listModels: (provider, refresh) =>
       vscode.postMessage({ type: "listModels", provider, refresh }),
     selectAgent: (id) => vscode.postMessage({ type: "selectAgent", agentId: id }),
@@ -270,6 +298,8 @@ export function useController(): { state: ChatState; actions: Actions } {
     deleteSession: (id) => vscode.postMessage({ type: "deleteSession", id }),
     pickFiles: () => vscode.postMessage({ type: "pickFiles" }),
     dropPaths: (paths) => vscode.postMessage({ type: "readDroppedPaths", paths }),
+    addAttachments: (attachments) =>
+      setState((s) => ({ ...s, attachments: mergeAttachments(s.attachments, attachments) })),
     removeAttachment: (p) =>
       setState((s) => ({ ...s, attachments: s.attachments.filter((a) => a.path !== p) })),
     searchFiles: (query) => vscode.postMessage({ type: "searchFiles", query }),
