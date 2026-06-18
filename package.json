@@ -15,7 +15,7 @@
   "main": "./dist/extension.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/OneTwoTen/open-ai-agent-chat-extension.git"
+    "url": "git+https://github.com/OneTwoTen/open-ai-agent-chat-extension.git"
   },
   "activationEvents": [],
   "contributes": {
@@ -328,5 +328,16 @@
     "remark-gfm": "^4.0.1",
     "undici": "^7.28.0",
     "zod": "^4.0.0"
-  }
+  },
+  "directories": {
+    "doc": "docs",
+    "test": "test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/OneTwoTen/open-ai-agent-chat-extension/issues"
+  },
+  "homepage": "https://github.com/OneTwoTen/open-ai-agent-chat-extension#readme"
 }
