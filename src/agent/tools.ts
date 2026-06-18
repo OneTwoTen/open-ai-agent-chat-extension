@@ -316,15 +316,22 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
         if (!(await ensure(ctx, "run_command", command))) {
           return "Command declined by the user.";
         }
+        console.log(`[Tool:run_command] Starting in ${ctx.workspaceRoot}: ${command}`);
+        ctx.onNote?.(`Running command in ${ctx.workspaceRoot}: ${command}`);
         try {
           const { stdout, stderr } = await execAsync(command, {
             cwd: ctx.workspaceRoot,
             timeout: 120_000,
             maxBuffer: 10 * 1024 * 1024,
           });
-          return [stdout, stderr].filter(Boolean).join("\n").trim() || "(no output)";
+          const output = [stdout, stderr].filter(Boolean).join("\n").trim() || "(no output)";
+          console.log(`[Tool:run_command] Completed in ${ctx.workspaceRoot}: ${command}`);
+          ctx.onNote?.(`Command finished: ${command}`);
+          return output;
         } catch (err: unknown) {
           const e = err as { stdout?: string; stderr?: string; message?: string };
+          console.error(`[Tool:run_command] Failed in ${ctx.workspaceRoot}: ${command}`, err);
+          ctx.onNote?.(`Command failed: ${command}`);
           return `Command failed.\n${[e.stdout, e.stderr, e.message].filter(Boolean).join("\n")}`;
         }
       },

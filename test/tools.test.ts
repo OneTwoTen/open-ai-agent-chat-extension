@@ -53,6 +53,27 @@ describe("buildTools – permission gating", () => {
     expect(buildTools(makeCtx({ permission: "ask" }), "all").write_file).toBeDefined();
     expect(buildTools(makeCtx({ permission: "auto" }), "all").run_command).toBeDefined();
   });
+
+  it("emits notes when run_command starts and finishes", async () => {
+    const notes: string[] = [];
+    const command = "node -e \"process.stdout.write('ok')\"";
+    const tools = buildTools(
+      makeCtx({
+        workspaceRoot: process.cwd(),
+        confirm: async () => true,
+        onNote: (msg) => notes.push(msg),
+      }),
+      "all",
+    );
+
+    const result = await (tools.run_command as any).execute({ command });
+
+    expect(result).toBe("ok");
+    expect(notes).toEqual([
+      `Running command in ${process.cwd()}: ${command}`,
+      `Command finished: ${command}`,
+    ]);
+  });
 });
 
 describe("buildTools – allow-list filtering", () => {

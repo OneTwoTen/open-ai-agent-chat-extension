@@ -2,7 +2,7 @@
   "name": "agent-coding-extension",
   "displayName": "Open AI Agent Chat",
   "description": "An agentic coding assistant for VS Code with multi-provider LLM support (OpenAI, Anthropic, Google, Azure, Bedrock, Mistral, Groq, Ollama, and more), three-tier search, multi-agent + skills, and chat history.",
-  "version": "0.0.1",
+  "version": "0.0.2012",
   "publisher": "doct",
   "engines": {
     "vscode": "^1.90.0"
@@ -272,7 +272,7 @@
         },
         "aiAgentChat.telegram.startOnActivation": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Automatically start the Telegram bot when VS Code launches (if a token is configured)."
         },
         "aiAgentChat.telegram.proxyUrl": {

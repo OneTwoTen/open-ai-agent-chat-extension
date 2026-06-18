@@ -7,6 +7,10 @@ const MAX_TG_LENGTH = 4000;
 const STREAM_EDIT_LIMIT = 3800;
 const TYPING_INTERVAL_MS = 4000;
 
+export type TelegramCallbacks = AgentCallbacks & {
+  flush(): Promise<void>;
+};
+
 function splitMessage(text: string): string[] {
   if (text.length <= MAX_TG_LENGTH) {
     return [text];
@@ -79,19 +83,26 @@ export function createTelegramCallbacks(
   getStreamingText: () => string,
   setStreamingText: (text: string) => void,
   onUsage?: (usage: UsageStats) => void,
-): AgentCallbacks {
+): TelegramCallbacks {
   let typingInterval: ReturnType<typeof setInterval> | null = null;
   let messagePromise: Promise<number | null> | null = null;
   let editChain: Promise<void> = Promise.resolve();
   let lastRenderedText = "";
+  let lastTypingAt = 0;
   const toolNames: string[] = [];
 
   const startTyping = () => {
-    stopTyping();
-    bot.api.sendChatAction(chatId, "typing").catch(() => {});
-    typingInterval = setInterval(() => {
+    const now = Date.now();
+    if (now - lastTypingAt >= TYPING_INTERVAL_MS) {
+      lastTypingAt = now;
       bot.api.sendChatAction(chatId, "typing").catch(() => {});
-    }, TYPING_INTERVAL_MS);
+    }
+    if (!typingInterval) {
+      typingInterval = setInterval(() => {
+        lastTypingAt = Date.now();
+        bot.api.sendChatAction(chatId, "typing").catch(() => {});
+      }, TYPING_INTERVAL_MS);
+    }
   };
 
   const stopTyping = () => {
@@ -181,6 +192,16 @@ export function createTelegramCallbacks(
       .catch(() => {});
   };
 
+  const flush = async (): Promise<void> => {
+    while (true) {
+      const pending = editChain;
+      await pending;
+      if (pending === editChain) {
+        return;
+      }
+    }
+  };
+
   return {
     onTextDelta(text: string): void {
       startTyping();
@@ -228,6 +249,8 @@ export function createTelegramCallbacks(
       stopTyping();
       finalizeLongMessage();
     },
+
+    flush,
   };
 }
 

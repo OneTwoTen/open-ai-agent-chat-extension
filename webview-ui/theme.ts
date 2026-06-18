@@ -16,11 +16,11 @@ export const theme = createTheme({
   primaryColor: "blue",
   defaultRadius: "md",
   fontSizes: {
-    xs: "11px",
-    sm: "12px",
-    md: "13px",
-    lg: "15px",
-    xl: "18px",
+    xs: "12px",
+    sm: "13px",
+    md: "15px",
+    lg: "17px",
+    xl: "20px",
   },
   cursorType: "pointer",
 });

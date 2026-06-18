@@ -8,7 +8,7 @@ body,
   margin: 0;
   padding: 0;
   height: 100%;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .shell {
@@ -84,7 +84,7 @@ body,
   padding: 10px 12px;
   overflow-x: auto;
   font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 12px;
+  font-size: 14px;
   margin: 6px 0 8px;
 }
 .md-codelang {

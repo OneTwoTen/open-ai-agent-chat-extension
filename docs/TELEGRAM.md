@@ -18,7 +18,7 @@ The token is stored in VS Code SecretStorage under `aiAgentChat.telegram.token`;
 | --- | --- | --- |
 | `aiAgentChat.telegram.allowedChatIds` | `[]` | Telegram user, group, or chat IDs allowed to use the bot. Empty means any chat with the bot token can use it. |
 | `aiAgentChat.telegram.workspacePath` | `""` | Absolute workspace path used by Telegram requests. Empty uses the first open VS Code workspace folder. |
-| `aiAgentChat.telegram.startOnActivation` | `true` | Starts the bot when the extension activates, if a token is configured. |
+| `aiAgentChat.telegram.startOnActivation` | `false` | Starts the bot when the extension activates, if a token is configured. |
 
 Chat IDs can be positive user IDs or negative group/supergroup IDs. In a private chat, send `/status` after starting the bot to confirm the active chat and workspace behavior.
 

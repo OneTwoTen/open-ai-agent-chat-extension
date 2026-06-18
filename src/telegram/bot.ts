@@ -26,12 +26,41 @@ type AbortSignalLike = {
   removeEventListener?: (type: "abort", listener: () => void) => void;
 };
 
+export function sanitizeTelegramUrl(url: string): string {
+  return url.replace(/\/bot\d+:[^/]+/g, "/bot<redacted>");
+}
+
+async function logTelegramFetchResponse(res: Response, url: string): Promise<void> {
+  const safeUrl = sanitizeTelegramUrl(url);
+  console.log(`[TelegramBot:fetch] Response: ${res.status} ${safeUrl}`);
+
+  if (!url.includes("/getUpdates")) {
+    return;
+  }
+
+  try {
+    const body = await res.clone().json() as { ok?: boolean; result?: unknown[] };
+    const count = Array.isArray(body.result) ? body.result.length : 0;
+    console.log(`[TelegramBot:fetch] getUpdates returned ${count} update(s)`);
+  } catch (err) {
+    console.warn("[TelegramBot:fetch] Failed to inspect getUpdates response", err);
+  }
+}
+
 export function createAbortSignalCompatibleFetch(fetchImpl: typeof fetch = globalThis.fetch) {
   return async (input: unknown, init?: any): Promise<Response> => {
     const sourceSignal = init?.signal as AbortSignalLike | undefined;
+    const url = typeof input === "string" ? input : String(input);
 
     if (!sourceSignal || sourceSignal instanceof AbortSignal) {
-      return fetchImpl(input as Parameters<typeof fetch>[0], init);
+      try {
+        const res = await fetchImpl(input as Parameters<typeof fetch>[0], init);
+        await logTelegramFetchResponse(res, url);
+        return res;
+      } catch (err) {
+        console.error(`[TelegramBot:fetch] Direct fetch FAILED: ${sanitizeTelegramUrl(url)}`, err);
+        throw err;
+      }
     }
 
     const controller = new AbortController();
@@ -44,7 +73,20 @@ export function createAbortSignalCompatibleFetch(fetchImpl: typeof fetch = globa
     }
 
     try {
-      return await fetchImpl(input as Parameters<typeof fetch>[0], { ...init, signal: controller.signal });
+      // Mutate init.signal in place instead of spreading to preserve
+      // any non-enumerable properties or prototype chain on the init object
+      const origSignal = init.signal;
+      init.signal = controller.signal;
+      try {
+        const res = await fetchImpl(input as Parameters<typeof fetch>[0], init);
+        await logTelegramFetchResponse(res, url);
+        return res;
+      } finally {
+        init.signal = origSignal;
+      }
+    } catch (err) {
+      console.error(`[TelegramBot:fetch] Wrapped fetch FAILED: ${sanitizeTelegramUrl(url)}`, err);
+      throw err;
     } finally {
       sourceSignal.removeEventListener?.("abort", onAbort);
     }
@@ -81,13 +123,14 @@ async function configureProxy(settingsProxyUrl: string): Promise<void> {
 
 export class TelegramBotManager implements vscode.Disposable {
   private bot: Bot<GrammyContext> | null = null;
+  private starting = false;
   private readonly sessions = new TelegramSessionManager();
   private startedAt = 0;
   private _config: TelegramBotConfig = {
     token: "",
     allowedChatIds: [],
     workspacePath: "",
-    startOnActivation: true,
+    startOnActivation: false,
     proxyUrl: "",
   };
 
@@ -119,34 +162,35 @@ export class TelegramBotManager implements vscode.Disposable {
       token: await this.context.secrets.get("aiAgentChat.telegram.token") ?? "",
       allowedChatIds: config.get<number[]>("allowedChatIds", []),
       workspacePath: config.get<string>("workspacePath", ""),
-      startOnActivation: config.get<boolean>("startOnActivation", true),
+      startOnActivation: config.get<boolean>("startOnActivation", false),
       proxyUrl: config.get<string>("proxyUrl", ""),
     };
   }
 
   async start(): Promise<void> {
-    if (this.bot) {
+    if (this.bot || this.starting) {
       return;
     }
 
-    await this.loadConfig();
-
-    if (!this._config.token) {
-      vscode.window.showWarningMessage(
-        "Telegram bot token not configured. Run 'AI Agent: Set Telegram Bot Token' to set it up."
-      );
-      return;
-    }
-
-    // Configure proxy before any Telegram API calls
-    await configureProxy(this._config.proxyUrl);
+    this.starting = true;
 
     try {
+      await this.loadConfig();
+
+      if (!this._config.token) {
+        vscode.window.showWarningMessage(
+          "Telegram bot token not configured. Run 'AI Agent: Set Telegram Bot Token' to set it up."
+        );
+        this.starting = false;
+        return;
+      }
+
+      // Configure proxy before any Telegram API calls
+      await configureProxy(this._config.proxyUrl);
+
       console.log(`[TelegramBot] Starting bot, token length=${this._config.token.length}, proxyUrl="${this._config.proxyUrl}"`);
       const bot = new Bot<GrammyContext>(this._config.token, {
         client: {
-          // grammY creates abort-controller signals, while VS Code's extension
-          // host fetch expects its own native AbortSignal instances.
           fetch: createAbortSignalCompatibleFetch() as any,
         },
       });
@@ -157,6 +201,12 @@ export class TelegramBotManager implements vscode.Disposable {
       console.log(`[TelegramBot] getMe OK: @${me.username} (${me.id})`);
 
       this.bot = bot;
+
+      // Log every incoming update
+      this.bot.use(async (ctx, next) => {
+        console.log(`[TelegramBot] Update received: chatId=${ctx.chat?.id}, messageId=${ctx.message?.message_id}, text=${ctx.message?.text?.slice(0, 50)}`);
+        await next();
+      });
 
       // Auth middleware - check allowed chat IDs dynamically
       this.bot.use(async (ctx, next) => {
@@ -173,33 +223,50 @@ export class TelegramBotManager implements vscode.Disposable {
 
       const storageUri = resolveStorageDir(this.context);
       registerHandlers(this.bot, this.sessions, this.context.secrets, storageUri, () => this._config.workspacePath);
+      console.log("[TelegramBot] Handlers registered. Starting long-polling...");
 
-      // Simple error handler
+      // Detailed error handler — log every polling failure
       this.bot.catch((err) => {
-        console.error("[TelegramBot] Polling error:", describeError(err));
+        const msg = describeError(err);
+        console.error(`[TelegramBot] Handler/polling error: ${msg}`);
+        console.error("[TelegramBot] Error details:", err);
       });
 
       // Don't await bot.start() — it runs an infinite polling loop and never resolves.
       this.bot.start({
         onStart: ({ username }) => {
           this.startedAt = Date.now();
+          this.starting = false;
           console.log(`[TelegramBot] Bot @${username} is running!`);
+          console.log(`[TelegramBot] Polling started. Listening for updates...`);
           vscode.window.showInformationMessage(
             `🤖 Telegram bot @${username} is running!`
           );
         },
+      }).then(() => {
+        console.warn("[TelegramBot] bot.start() resolved unexpectedly — polling loop may have exited.");
+        this.starting = false;
       }).catch((err: unknown) => {
-        // "Aborted" is expected when bot.stop() is called — ignore it
         if (err instanceof Error && err.message.includes("Aborted")) {
+          console.log("[TelegramBot] Polling stopped (aborted).");
+          this.starting = false;
           return;
         }
         const message = describeError(err);
-        console.error("[TelegramBot] start() failed:", message);
-        vscode.window.showErrorMessage(`Telegram bot failed: ${message}`);
+        console.error("[TelegramBot] start() FAILED:", message);
+        console.error("[TelegramBot] Full error object:", err);
+        // Stop the old bot instance before clearing to prevent 409 conflicts
+        const oldBot = this.bot;
         this.bot = null;
+        this.starting = false;
+        if (oldBot) {
+          oldBot.stop().catch(() => {});
+        }
+        vscode.window.showErrorMessage(`Telegram bot failed: ${message}`);
       });
     } catch (err: unknown) {
       this.bot = null;
+      this.starting = false;
       const message = describeError(err);
       console.error("[TelegramBot] Startup error:", message);
       vscode.window.showErrorMessage(`Failed to start Telegram bot: ${message}`);
@@ -210,6 +277,7 @@ export class TelegramBotManager implements vscode.Disposable {
     if (!this.bot) {
       return;
     }
+    this.starting = false;
     try {
       await this.bot.stop();
     } catch {

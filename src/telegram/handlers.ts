@@ -26,13 +26,42 @@ import {
   PROVIDERS,
 } from "../providers";
 import type { TelegramSessionManager } from "./session";
-import type { PermissionLevel, Attachment, TranscriptItem } from "../shared/protocol";
+import type { PermissionLevel, Attachment, TranscriptItem, UsageStats } from "../shared/protocol";
 import { SessionStore, titleFrom } from "../sessions";
+
+export function parseConfirmCallbackData(data: string): { key: string; chatId: number; value: boolean } | null {
+  if (!data.startsWith("confirm:")) {
+    return null;
+  }
+  const body = data.slice("confirm:".length);
+  const lastColon = body.lastIndexOf(":");
+  if (lastColon <= 0) {
+    return null;
+  }
+  const key = body.slice(0, lastColon);
+  const action = body.slice(lastColon + 1);
+  if (action !== "yes" && action !== "no") {
+    return null;
+  }
+  const firstColon = key.indexOf(":");
+  const chatIdText = firstColon === -1 ? key : key.slice(0, firstColon);
+  const chatId = Number(chatIdText);
+  if (!Number.isFinite(chatId)) {
+    return null;
+  }
+  return { key, chatId, value: action === "yes" };
+}
 
 interface QueuedRequest {
   text: string;
   attachments: Attachment[];
   resolve: () => void;
+}
+
+export function runInBackground(label: string, runner: () => Promise<void>): void {
+  runner().catch((err) => {
+    log("error", `${label} failed`, err);
+  });
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -305,6 +334,7 @@ export async function runAgentTurn(
       signal: session.abortController!.signal,
       callbacks: wrappedCallbacks,
     });
+    await callbacks.flush();
 
     // Persist session to SessionStore
     if (transcript.length > 0 && session.sessionId) {
@@ -423,7 +453,9 @@ export function registerHandlers(
       await ctx.reply("Usage: `/chat <your message>`", { parse_mode: "Markdown" });
       return;
     }
-    await runAgentTurn(bot, ctx.chat!.id, text, sessions, secrets, [], getWorkspacePath(), storageUri);
+    runInBackground("Telegram /chat turn", () =>
+      runAgentTurn(bot, ctx.chat!.id, text, sessions, secrets, [], getWorkspacePath(), storageUri)
+    );
   });
 
   // ── /agent ──────────────────────────────────────────────────
@@ -679,9 +711,11 @@ export function registerHandlers(
       mimeType: result.mimeType,
     };
 
-    await runAgentTurn(
-      bot, ctx.chat!.id, caption,
-      sessions, secrets, [attachment], getWorkspacePath(), storageUri,
+    runInBackground("Telegram document turn", () =>
+      runAgentTurn(
+        bot, ctx.chat!.id, caption,
+        sessions, secrets, [attachment], getWorkspacePath(), storageUri,
+      )
     );
   });
 
@@ -710,9 +744,11 @@ export function registerHandlers(
       mimeType,
     };
 
-    await runAgentTurn(
-      bot, ctx.chat!.id, caption,
-      sessions, secrets, [attachment], getWorkspacePath(), storageUri,
+    runInBackground("Telegram photo turn", () =>
+      runAgentTurn(
+        bot, ctx.chat!.id, caption,
+        sessions, secrets, [attachment], getWorkspacePath(), storageUri,
+      )
     );
   });
 
@@ -720,30 +756,35 @@ export function registerHandlers(
 
   bot.on("message:text", async (ctx) => {
     if (ctx.message.text.startsWith("/")) return;
-    await runAgentTurn(bot, ctx.chat!.id, ctx.message.text, sessions, secrets, [], getWorkspacePath(), storageUri);
+    runInBackground("Telegram text turn", () =>
+      runAgentTurn(bot, ctx.chat!.id, ctx.message.text, sessions, secrets, [], getWorkspacePath(), storageUri)
+    );
   });
 
   // ── Callback queries (inline keyboard confirmations) ────────
 
   bot.callbackQuery(/^confirm:/, async (ctx) => {
     const data = ctx.callbackQuery.data;
-    const parts = data.split(":");
-    if (parts.length < 5) {
+    const parsed = parseConfirmCallbackData(data);
+    console.log(`[TelegramBot] Confirmation callback received: chatId=${ctx.chat?.id}, data=${data}`);
+    if (!parsed) {
+      console.warn("[TelegramBot] Invalid confirmation callback data", data);
       await ctx.answerCallbackQuery("Invalid confirmation data.");
       return;
     }
-    const chatId = Number(parts[1]);
-    if (ctx.chat?.id !== chatId) {
+    if (ctx.chat?.id !== parsed.chatId) {
+      console.warn("[TelegramBot] Confirmation callback chat mismatch", { ctxChatId: ctx.chat?.id, expectedChatId: parsed.chatId });
       await ctx.answerCallbackQuery("This confirmation is from a different chat.");
       return;
     }
-    const key = `${parts[1]}:${parts[2]}:${parts[3]}`;
-    const value = parts[4] === "yes";
-    const resolved = sessions.resolveConfirm(key, value);
+    const resolved = sessions.resolveConfirm(parsed.key, parsed.value);
     if (resolved) {
-      await ctx.answerCallbackQuery(value ? "✅ Approved" : "❌ Denied");
+      console.log(`[TelegramBot] Confirmation resolved: key=${parsed.key}, value=${parsed.value}`);
+      await ctx.answerCallbackQuery(parsed.value ? "Approved" : "Denied");
     } else {
-      await ctx.answerCallbackQuery("⏱️ This confirmation has expired.");
+      console.warn(`[TelegramBot] Confirmation key not found or expired: key=${parsed.key}`);
+      await bot.api.sendMessage(parsed.chatId, "Confirmation was received, but the pending request was not found. Please send the command again.");
+      await ctx.answerCallbackQuery("This confirmation has expired.");
     }
   });
 }

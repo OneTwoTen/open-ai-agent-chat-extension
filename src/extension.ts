@@ -60,10 +60,6 @@ export function activate(context: vscode.ExtensionContext): void {
       if (token?.trim()) {
         await context.secrets.store("aiAgentChat.telegram.token", token.trim());
         vscode.window.showInformationMessage("Telegram bot token saved.");
-        // Auto-start if not running
-        if (!telegramBot.isRunning) {
-          await telegramBot.start();
-        }
       }
     }),
     telegramBot,

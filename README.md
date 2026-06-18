@@ -64,7 +64,7 @@ Settings live under the `aiAgentChat.*` namespace. See [docs/PROVIDERS.md](docs/
 | `aiAgentChat.maxAgentSteps` | `25` | Max tool-calling iterations per turn. |
 | `aiAgentChat.telegram.allowedChatIds` | `[]` | Telegram chat/user IDs allowed to use the bot. Empty allows any chat with the bot token. |
 | `aiAgentChat.telegram.workspacePath` | `""` | Workspace root used by Telegram requests. Empty uses the first VS Code workspace folder. |
-| `aiAgentChat.telegram.startOnActivation` | `true` | Start the Telegram bot when the extension activates, if a token is configured. |
+| `aiAgentChat.telegram.startOnActivation` | `false` | Start the Telegram bot when the extension activates, if a token is configured. |
 
 API keys are stored in VS Code **SecretStorage**, never in settings.
 
