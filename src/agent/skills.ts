@@ -1,5 +1,6 @@
 import * as path from "path";
 import * as vscode from "vscode";
+import { resolveAgentchatDir } from "./dataPath";
 
 /** Read a workspace text file, returning null if missing/unreadable. */
 async function readText(uri: vscode.Uri): Promise<string | null> {
@@ -68,6 +69,22 @@ export async function loadProjectRules(workspaceRoot: string): Promise<string> {
     }
   }
 
+  // Also check for rules in configured agentchat directory
+  const configuredRulesDir = path.join(resolveAgentchatDir(workspaceRoot), "rules");
+  if (configuredRulesDir !== path.join(workspaceRoot, ".agentchat", "rules")) {
+    const files = await listFiles(vscode.Uri.file(configuredRulesDir));
+    for (const file of files) {
+      if (!/\.(md|mdc|txt)$/i.test(file.fsPath)) {
+        continue;
+      }
+      const content = await readText(file);
+      if (content && content.trim()) {
+        const rel = path.relative(workspaceRoot, file.fsPath).replace(/\\/g, "/");
+        sections.push(`<rules source="${rel}">\n${content.trim()}\n</rules>`);
+      }
+    }
+  }
+
   const joined = sections.join("\n\n");
   return joined.length > MAX_RULES_CHARS
     ? joined.slice(0, MAX_RULES_CHARS) + "\n[...rules truncated]"
@@ -108,7 +125,7 @@ export class SkillManager {
   private readonly dir: vscode.Uri;
 
   constructor(workspaceRoot: string) {
-    this.dir = vscode.Uri.file(path.join(workspaceRoot, ".agentchat", "skills"));
+    this.dir = vscode.Uri.file(path.join(resolveAgentchatDir(workspaceRoot), "skills"));
   }
 
   async list(): Promise<Skill[]> {

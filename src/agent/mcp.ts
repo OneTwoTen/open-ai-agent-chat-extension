@@ -2,6 +2,7 @@ import { dynamicTool, jsonSchema, type ToolSet } from "ai";
 import * as path from "path";
 import * as vscode from "vscode";
 import { McpServerConfig, McpServerStatus, McpTransport } from "../shared/protocol";
+import { resolveAgentchatDir } from "./dataPath";
 
 interface Conn {
   config: McpServerConfig;
@@ -22,7 +23,7 @@ export class McpManager {
   private readonly conns = new Map<string, Conn>();
 
   constructor(workspaceRoot: string) {
-    this.file = vscode.Uri.file(path.join(workspaceRoot, ".agentchat", "mcp.json"));
+    this.file = vscode.Uri.file(path.join(resolveAgentchatDir(workspaceRoot), "mcp.json"));
   }
 
   async loadConfig(): Promise<McpServerConfig[]> {

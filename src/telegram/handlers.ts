@@ -9,6 +9,7 @@ import { SkillManager, loadProjectRules } from "../agent/skills";
 import { MemoryStore } from "../agent/memory";
 import { RepoIndex } from "../agent/embeddings";
 import { McpManager } from "../agent/mcp";
+import { resolveAgentchatDir } from "../agent/dataPath";
 import { buildTools } from "../agent/tools";
 import { composeSystemPrompt } from "../agent/prompt";
 import {
@@ -126,18 +127,18 @@ export async function runAgentTurn(
 
   log("info", `Starting turn for chat ${chatId}`, { agentId: session.agentId, textLen: text.length });
 
-  try {
-    await bot.api.sendChatAction(chatId, "typing");
-
-    // Build workspace services
-    const agents = new AgentManager(root);
-    const skills = new SkillManager(root);
-    const memory = new MemoryStore(root);
+  // Build workspace services
+  const agents = new AgentManager(root);
+  const skills = new SkillManager(root);
+  const memory = new MemoryStore(root);
     const index = new RepoIndex(
-      vscode.Uri.file(path.join(root, ".agentchat", "repo-index.json")),
+      vscode.Uri.file(path.join(resolveAgentchatDir(root), "repo-index.json")),
       () => getEmbeddingModel(secrets),
     );
-    const mcp = new McpManager(root);
+  const mcp = new McpManager(root);
+
+  try {
+    await bot.api.sendChatAction(chatId, "typing");
 
     const agent = (await agents.get(session.agentId)) ?? (await agents.list())[0];
     const providerId = (agent.provider ?? getActiveProviderId()) as import("../providers/catalog").ProviderId;
@@ -264,6 +265,9 @@ export async function runAgentTurn(
     log("error", `Turn failed for chat ${chatId}`, msg);
 
   } finally {
+    // Cleanup MCP connections to prevent resource leaks
+    await mcp.disposeAll();
+
     session.state = "idle";
 
     // Process next queued request
@@ -573,6 +577,14 @@ export function registerHandlers(
     const result = await downloadTelegramFile(bot, fileId);
     if (!result) {
       await ctx.reply("❌ Failed to download file.");
+      return;
+    }
+
+    const textMimePrefixes = ["text/", "application/json", "application/xml", "application/javascript",
+      "application/x-yaml", "application/typescript"];
+    const isText = textMimePrefixes.some((p) => result.mimeType.startsWith(p));
+    if (!isText) {
+      await ctx.reply(`⚠️ Cannot process \`${escapeTg(fileName)}\` — binary file type (${result.mimeType}) is not supported.`, { parse_mode: "Markdown" });
       return;
     }
 

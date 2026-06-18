@@ -45,6 +45,7 @@ export interface TelegramBotStatus {
   uptime: number;
   allowedChatIds: number[];
   workspacePath: string;
+  startOnActivation: boolean;
 }
 
 export type GrammyContext = Context;

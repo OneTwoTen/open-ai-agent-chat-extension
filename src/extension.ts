@@ -4,8 +4,8 @@ import { getActiveProviderId, PROVIDERS, PROVIDER_IDS, ProviderId, secretKeyFor 
 import { TelegramBotManager } from "./telegram/bot";
 
 export function activate(context: vscode.ExtensionContext): void {
-  const provider = new ChatViewProvider(context);
   const telegramBot = new TelegramBotManager(context);
+  const provider = new ChatViewProvider(context, telegramBot);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(ChatViewProvider.viewType, provider, {

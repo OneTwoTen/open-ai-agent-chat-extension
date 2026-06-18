@@ -2,6 +2,7 @@ import { Bot, type Context } from "grammy";
 import * as vscode from "vscode";
 import { TelegramSessionManager } from "./session";
 import { registerHandlers } from "./handlers";
+import { resolveStorageDir } from "../agent/dataPath";
 import type { TelegramBotConfig, TelegramBotStatus, GrammyContext } from "./types";
 
 export class TelegramBotManager implements vscode.Disposable {
@@ -32,6 +33,7 @@ export class TelegramBotManager implements vscode.Disposable {
       uptime: this.startedAt ? Date.now() - this.startedAt : 0,
       allowedChatIds: this._config.allowedChatIds,
       workspacePath: this._config.workspacePath,
+      startOnActivation: this._config.startOnActivation,
     };
   }
 
@@ -62,19 +64,20 @@ export class TelegramBotManager implements vscode.Disposable {
     try {
       this.bot = new Bot<GrammyContext>(this._config.token);
 
-      // Auth middleware - check allowed chat IDs
-      if (this._config.allowedChatIds.length > 0) {
-        this.bot.use(async (ctx, next) => {
+      // Auth middleware - check allowed chat IDs dynamically
+      this.bot.use(async (ctx, next) => {
+        const ids = this._config.allowedChatIds;
+        if (ids.length > 0) {
           const chatId = ctx.chat?.id;
-          if (chatId && !this._config.allowedChatIds.includes(chatId)) {
+          if (chatId && !ids.includes(chatId)) {
             await ctx.reply("⛔ You are not authorized to use this bot.");
             return;
           }
-          await next();
-        });
-      }
+        }
+        await next();
+      });
 
-      const storageUri = this.context.storageUri ?? this.context.globalStorageUri;
+      const storageUri = resolveStorageDir(this.context);
       registerHandlers(this.bot, this.sessions, this.context.secrets, storageUri, () => this._config.workspacePath);
 
       // Simple error handler

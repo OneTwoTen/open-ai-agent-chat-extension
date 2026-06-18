@@ -84,9 +84,58 @@ export function createTelegramToolContext(
         });
       });
     },
-    previewEdit: async (_filePath: string, _original: string, _updated: string): Promise<boolean> => {
-      // Skip diff preview on Telegram - just approve if permission allows
-      return permission !== "readonly";
+    previewEdit: async (filePath: string, original: string, updated: string): Promise<boolean> => {
+      if (permission === "readonly") {
+        await bot.api.sendMessage(chatId, `⛔ Edit \`${filePath}\` blocked by readonly permission.`, { parse_mode: "Markdown" });
+        return false;
+      }
+
+      // Build a compact diff summary
+      const origLines = original.split("\n");
+      const newLines = updated.split("\n");
+      const added = newLines.length - origLines.length;
+      const changed = origLines.filter((l, i) => l !== newLines[i]).length;
+      const summary = `📝 *Proposed edit:* \`${filePath}\`\nLines: ${origLines.length} → ${newLines.length} (${added >= 0 ? "+" : ""}${added})\nChanged lines: ~${changed}`;
+
+      const key = `${chatId}:preview:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+      const keyboard = new InlineKeyboard()
+        .text("✅ Apply", `confirm:${key}:yes`)
+        .text("❌ Reject", `confirm:${key}:no`);
+
+      const msg = await bot.api.sendMessage(chatId, summary, {
+        parse_mode: "Markdown",
+        reply_markup: keyboard,
+      });
+
+      return new Promise<boolean>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          sessions.resolveConfirm(key, false);
+          bot.api.editMessageText(chatId, msg.message_id, `⏱️ Edit preview for \`${filePath}\` timed out`, {
+            parse_mode: "Markdown",
+          }).catch(() => {});
+          reject(new Error("Edit preview timed out"));
+        }, CONFIRM_TIMEOUT_MS);
+
+        sessions.addConfirm(key, {
+          chatId,
+          messageId: msg.message_id,
+          resolve: (value: boolean) => {
+            clearTimeout(timeout);
+            bot.api.editMessageText(
+              chatId,
+              msg.message_id,
+              value ? `✅ Edit \`${filePath}\` applied` : `❌ Edit \`${filePath}\` rejected`,
+              { parse_mode: "Markdown" },
+            ).catch(() => {});
+            resolve(value);
+          },
+          reject: (err: Error) => {
+            clearTimeout(timeout);
+            reject(err);
+          },
+          timeout,
+        });
+      });
     },
     trackFileChange: (filePath: string, status: "created" | "modified" | "deleted" | "moved", _fromPath?: string) => {
       const icons: Record<string, string> = {

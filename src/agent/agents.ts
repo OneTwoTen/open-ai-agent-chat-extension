@@ -1,6 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { ProviderId } from "../providers/catalog";
+import { resolveAgentchatDir } from "./dataPath";
 
 /** A configurable agent persona with its own prompt, tools, and model. */
 export interface AgentDefinition {
@@ -88,7 +89,7 @@ export class AgentManager {
   private readonly dir: vscode.Uri;
 
   constructor(workspaceRoot: string) {
-    this.dir = vscode.Uri.file(path.join(workspaceRoot, ".agentchat", "agents"));
+    this.dir = vscode.Uri.file(path.join(resolveAgentchatDir(workspaceRoot), "agents"));
   }
 
   async list(): Promise<AgentDefinition[]> {

@@ -1,5 +1,6 @@
 import * as path from "path";
 import * as vscode from "vscode";
+import { resolveAgentchatDir } from "./dataPath";
 
 const MAX_MEMORY_CHARS = 6000;
 
@@ -13,7 +14,7 @@ export class MemoryStore {
   private readonly file: vscode.Uri;
 
   constructor(workspaceRoot: string) {
-    this.file = vscode.Uri.file(path.join(workspaceRoot, ".agentchat", "memory.md"));
+    this.file = vscode.Uri.file(path.join(resolveAgentchatDir(workspaceRoot), "memory.md"));
   }
 
   async read(): Promise<string> {

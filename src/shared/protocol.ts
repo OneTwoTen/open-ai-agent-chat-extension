@@ -183,7 +183,12 @@ export type WebviewToHost =
   | { type: "listMcp" }
   | { type: "saveMcpServer"; server: McpServerConfig }
   | { type: "deleteMcpServer"; id: string }
-  | { type: "reconnectMcp" };
+  | { type: "reconnectMcp" }
+  | { type: "getTelegramStatus" }
+  | { type: "startTelegram" }
+  | { type: "stopTelegram" }
+  | { type: "setTelegramToken"; token: string }
+  | { type: "updateTelegramConfig"; config: TelegramConfigUpdate };
 
 export type HostToWebview =
   | {
@@ -223,6 +228,7 @@ export type HostToWebview =
   | { type: "agentsList"; agents: AgentDTO[]; toolCatalog: ToolCatalogItem[] }
   | { type: "skillsList"; skills: SkillDTO[] }
   | { type: "mcpStatus"; servers: McpServerStatus[] }
+  | { type: "telegramStatus"; status: TelegramStatus }
   | { type: "workingSet"; files: WorkingSetFile[] };
 
 /** A file in the working set with its modification status. */
@@ -232,4 +238,21 @@ export interface WorkingSetFile {
   timestamp: number;
   /** For moved files, the original path. */
   fromPath?: string;
+}
+
+/** Telegram bot status for the UI panel. */
+export interface TelegramStatus {
+  running: boolean;
+  chatCount: number;
+  uptime: number;
+  allowedChatIds: number[];
+  workspacePath: string;
+  startOnActivation: boolean;
+}
+
+/** Telegram bot configuration update from the UI. */
+export interface TelegramConfigUpdate {
+  allowedChatIds: number[];
+  workspacePath: string;
+  startOnActivation: boolean;
 }

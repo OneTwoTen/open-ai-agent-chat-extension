@@ -27,6 +27,7 @@ import { AgentsPanel } from "./panels/AgentsPanel";
 import { ChatPanel } from "./panels/ChatPanel";
 import { McpPanel } from "./panels/McpPanel";
 import { SkillsPanel } from "./panels/SkillsPanel";
+import { TelegramPanel } from "./panels/TelegramPanel";
 
 const REASONING: { value: ReasoningEffort; label: string }[] = [
   { value: "off", label: "No reasoning" },
@@ -190,6 +191,7 @@ export function App() {
           <Tabs.Tab value="agents">Agents</Tabs.Tab>
           <Tabs.Tab value="skills">Skills</Tabs.Tab>
           <Tabs.Tab value="mcp">MCP</Tabs.Tab>
+          <Tabs.Tab value="telegram">Telegram</Tabs.Tab>
         </Tabs.List>
       </Tabs>
 
@@ -197,6 +199,7 @@ export function App() {
       {tab === "agents" && <AgentsPanel state={state} actions={actions} />}
       {tab === "skills" && <SkillsPanel state={state} actions={actions} />}
       {tab === "mcp" && <McpPanel state={state} actions={actions} />}
+      {tab === "telegram" && <TelegramPanel state={state} actions={actions} />}
 
       <HistoryDrawer
         opened={historyOpen}

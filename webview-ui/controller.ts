@@ -15,6 +15,8 @@ import {
   SessionSummary,
   SkillDTO,
   StepUsage,
+  TelegramConfigUpdate,
+  TelegramStatus,
   ToolCatalogItem,
   TranscriptItem,
   UsageStats,
@@ -61,6 +63,7 @@ export interface ChatState {
   toolCatalog: ToolCatalogItem[];
   skills: SkillDTO[];
   mcpServers: McpServerStatus[];
+  telegramStatus: TelegramStatus;
   workingSet: WorkingSetFile[];
 }
 
@@ -93,6 +96,14 @@ const INITIAL: ChatState = {
   toolCatalog: [],
   skills: [],
   mcpServers: [],
+  telegramStatus: {
+    running: false,
+    chatCount: 0,
+    uptime: 0,
+    allowedChatIds: [],
+    workspacePath: "",
+    startOnActivation: false,
+  },
   workingSet: [],
 };
 
@@ -132,6 +143,11 @@ export interface Actions {
   saveMcpServer(s: McpServerConfig): void;
   deleteMcpServer(id: string): void;
   reconnectMcp(): void;
+  getTelegramStatus(): void;
+  startTelegram(): void;
+  stopTelegram(): void;
+  setTelegramToken(): void;
+  updateTelegramConfig(config: TelegramConfigUpdate): void;
 }
 
 export function useController(): { state: ChatState; actions: Actions } {
@@ -247,6 +263,9 @@ export function useController(): { state: ChatState; actions: Actions } {
         case "workingSet":
           patch({ workingSet: msg.files });
           break;
+        case "telegramStatus":
+          patch({ telegramStatus: msg.status });
+          break;
       }
     });
     vscode.postMessage({ type: "ready" });
@@ -317,6 +336,11 @@ export function useController(): { state: ChatState; actions: Actions } {
     saveMcpServer: (s) => vscode.postMessage({ type: "saveMcpServer", server: s }),
     deleteMcpServer: (id) => vscode.postMessage({ type: "deleteMcpServer", id }),
     reconnectMcp: () => vscode.postMessage({ type: "reconnectMcp" }),
+    getTelegramStatus: () => vscode.postMessage({ type: "getTelegramStatus" }),
+    startTelegram: () => vscode.postMessage({ type: "startTelegram" }),
+    stopTelegram: () => vscode.postMessage({ type: "stopTelegram" }),
+    setTelegramToken: () => vscode.postMessage({ type: "setTelegramToken", token: "" }),
+    updateTelegramConfig: (config) => vscode.postMessage({ type: "updateTelegramConfig", config }),
   };
 
   return { state, actions };

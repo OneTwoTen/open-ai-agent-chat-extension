@@ -6,7 +6,7 @@ An agentic coding assistant for VS Code — a Copilot-Chat-style experience that
 
 ## Features
 
-- **Mantine UI** organized into tabs: **Chat**, **Agents**, **Skills**, **MCP** — themed to match your VS Code color theme.
+- **Mantine UI** organized into tabs: **Chat**, **Agents**, **Skills**, **MCP**, **Telegram** — themed to match your VS Code color theme.
 - **Many providers, your keys.** OpenAI, Anthropic, Google Gemini, Google Vertex, Azure OpenAI, Amazon Bedrock, Mistral, Cohere, Groq, DeepSeek, Fireworks, Together AI, xAI Grok, Cerebras, Perplexity, Ollama (local), and any OpenAI-compatible endpoint. Switch live from the header.
 - **Reasoning effort & permission levels.** Dial reasoning (off/low/medium/high) for capable models; set the agent's autonomy (read-only / ask before edits / autonomous).
 - **Token & cache analytics.** Live input/output/reasoning tokens, cache hit rate, per-step (per-task) breakdown, and session totals.
@@ -21,6 +21,7 @@ An agentic coding assistant for VS Code — a Copilot-Chat-style experience that
 - **Chat history & drag-and-drop attachments.**
 - **Copilot-style UX.** Full-screen "open in editor" mode, `#` picker to reference files/folders, `/` slash commands, context chips (selection/file/problems/changes), full markdown rendering, model badge per answer, and copy / insert-at-cursor / insert-into-new-file on code blocks.
 - **Analyze chats.** Review one or more sessions for a quality assessment + problems + suggestions, and auto-persist improvements as skills/memory.
+- **Telegram bot bridge.** Start a Telegram bot from VS Code, restrict allowed chat IDs, switch agents/workspaces, send attachments, and run the same tool-enabled agent loop remotely.
 
 ## Quick start
 
@@ -61,6 +62,9 @@ Settings live under the `aiAgentChat.*` namespace. See [docs/PROVIDERS.md](docs/
 | `aiAgentChat.reasoning` | `off` | Default reasoning effort (off/low/medium/high). |
 | `aiAgentChat.permission` | `ask` | Agent autonomy: readonly / ask / auto. |
 | `aiAgentChat.maxAgentSteps` | `25` | Max tool-calling iterations per turn. |
+| `aiAgentChat.telegram.allowedChatIds` | `[]` | Telegram chat/user IDs allowed to use the bot. Empty allows any chat with the bot token. |
+| `aiAgentChat.telegram.workspacePath` | `""` | Workspace root used by Telegram requests. Empty uses the first VS Code workspace folder. |
+| `aiAgentChat.telegram.startOnActivation` | `true` | Start the Telegram bot when the extension activates, if a token is configured. |
 
 API keys are stored in VS Code **SecretStorage**, never in settings.
 
@@ -71,6 +75,7 @@ API keys are stored in VS Code **SecretStorage**, never in settings.
 - [docs/SEARCH.md](docs/SEARCH.md) — the three search tiers.
 - [docs/AGENTS_AND_SKILLS.md](docs/AGENTS_AND_SKILLS.md) — agents, skills, rules, memory.
 - [docs/TOOLS.md](docs/TOOLS.md) — the agent's tools.
+- [docs/TELEGRAM.md](docs/TELEGRAM.md) — Telegram bot setup, commands, runtime behavior, and security notes.
 - [docs/TOKEN_OPTIMIZATION.md](docs/TOKEN_OPTIMIZATION.md) — cache-hit and multi-agent token strategy.
 - [docs/COPILOT_PARITY.md](docs/COPILOT_PARITY.md) — Copilot-Chat research, parity status, and feature proposals.
 
@@ -79,6 +84,7 @@ API keys are stored in VS Code **SecretStorage**, never in settings.
 - **Command execution and file deletion require explicit confirmation** via a modal dialog.
 - API keys live in SecretStorage; cloud providers (Bedrock/Vertex) read credentials from environment/config.
 - Tools are sandboxed to the workspace folder; paths outside the workspace are rejected.
+- Telegram bot tokens live in SecretStorage; configure `aiAgentChat.telegram.allowedChatIds` before using the bot outside a private test chat.
 
 ## Status
 

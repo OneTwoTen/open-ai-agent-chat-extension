@@ -37,6 +37,8 @@ import {
   ProviderId,
   secretKeyFor,
 } from "./providers";
+import { TelegramBotManager } from "./telegram/bot";
+import { resolveStorageDir } from "./agent/dataPath";
 import { SessionStore, titleFrom } from "./sessions";
 import {
   AgentDTO,
@@ -105,12 +107,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private readonly modelCache = new Map<ProviderId, string[]>();
   private workingSet: WorkingSetFile[] = [];
 
-  constructor(private readonly context: vscode.ExtensionContext) {
+  private telegramBot?: TelegramBotManager;
+
+  constructor(private readonly context: vscode.ExtensionContext, telegramBot?: TelegramBotManager) {
     this.currentSessionId = this.newId();
     this.agentId = context.workspaceState.get<string>("aiAgentChat.agentId", "coder");
     this.reasoning = context.workspaceState.get<ReasoningEffort>("aiAgentChat.reasoning", "off");
     this.permission = context.workspaceState.get<PermissionLevel>("aiAgentChat.permission", "ask");
-    this.sessionStore = new SessionStore(context.storageUri ?? context.globalStorageUri);
+    this.sessionStore = new SessionStore(resolveStorageDir(context));
+    this.telegramBot = telegramBot;
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -203,7 +208,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (this.services?.root === root) {
       return this.services;
     }
-    const base = this.context.storageUri ?? this.context.globalStorageUri;
+    const base = resolveStorageDir(this.context);
     this.services = {
       root,
       agents: new AgentManager(root),
@@ -368,6 +373,44 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       case "reconnectMcp":
         await this.connectMcp(true);
         await this.sendMcp();
+        break;
+      // ---- Telegram messages -------------------------------------------
+      case "getTelegramStatus":
+        await this.sendTelegramStatus();
+        break;
+      case "startTelegram":
+        try {
+          await this.telegramBot?.start();
+        } catch (e: unknown) {
+          this.post({ type: "error", message: e instanceof Error ? e.message : String(e) });
+        }
+        await this.sendTelegramStatus();
+        break;
+      case "stopTelegram":
+        try {
+          await this.telegramBot?.stop();
+        } catch (e: unknown) {
+          this.post({ type: "error", message: e instanceof Error ? e.message : String(e) });
+        }
+        await this.sendTelegramStatus();
+        break;
+      case "setTelegramToken":
+        try {
+          await vscode.commands.executeCommand("aiAgentChat.setTelegramToken");
+        } catch (e: unknown) {
+          this.post({ type: "error", message: e instanceof Error ? e.message : String(e) });
+        }
+        await this.sendTelegramStatus();
+        break;
+      case "updateTelegramConfig":
+        try {
+          await this.saveTelegramConfig(msg.config);
+          // Reload bot config so status reflects new values
+          await this.telegramBot?.loadConfig();
+        } catch (e: unknown) {
+          this.post({ type: "error", message: e instanceof Error ? e.message : String(e) });
+        }
+        await this.sendTelegramStatus();
         break;
     }
   }
@@ -842,7 +885,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     original: string,
     updated: string
   ): Promise<boolean> {
-    const base = this.context.storageUri ?? this.context.globalStorageUri;
+    const base = resolveStorageDir(this.context);
     const dir = vscode.Uri.joinPath(base, "diff-previews", this.newId());
     await vscode.workspace.fs.createDirectory(dir);
     const safeName = filePath.replace(/[\\/:*?"<>|]+/g, "_") || "untitled";
@@ -915,6 +958,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async sendMcp(): Promise<void> {
     const services = this.getServices();
     this.post({ type: "mcpStatus", servers: services?.mcp.getStatus() ?? [] });
+  }
+
+  // ---- Telegram -------------------------------------------------------
+  private async sendTelegramStatus(): Promise<void> {
+    const st = this.telegramBot?.status;
+    this.post({
+      type: "telegramStatus",
+      status: {
+        running: st?.running ?? false,
+        chatCount: st?.chatCount ?? 0,
+        uptime: st?.uptime ?? 0,
+        allowedChatIds: st?.allowedChatIds ?? [],
+        workspacePath: st?.workspacePath ?? "",
+        startOnActivation: st?.startOnActivation ?? false,
+      },
+    });
+  }
+
+  private async saveTelegramConfig(
+    config: import("./shared/protocol").TelegramConfigUpdate
+  ): Promise<void> {
+    const tgConfig = vscode.workspace.getConfiguration("aiAgentChat.telegram");
+    await tgConfig.update("allowedChatIds", config.allowedChatIds, vscode.ConfigurationTarget.Global);
+    await tgConfig.update("workspacePath", config.workspacePath, vscode.ConfigurationTarget.Global);
+    await tgConfig.update("startOnActivation", config.startOnActivation, vscode.ConfigurationTarget.Global);
   }
 
   // ---- Agents / Skills lists ------------------------------------------
@@ -1430,7 +1498,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private post(msg: HostToWebview): void {
     for (const webview of this.webviews) {
-      webview.postMessage(msg);
+      try {
+        webview.postMessage(msg);
+      } catch {
+        // Webview may have been disposed; silently ignore
+      }
     }
   }
 

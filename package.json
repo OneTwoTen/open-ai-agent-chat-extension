@@ -243,6 +243,16 @@
           "default": "ask",
           "description": "Agent permission level: readonly (no edits), ask (confirm edits), auto (autonomous, destructive actions still confirm)."
         },
+        "aiAgentChat.storagePath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to a custom directory for extension storage (sessions, repo-index, diff-previews). Leave empty to use the VS Code managed storage directory."
+        },
+        "aiAgentChat.agentchatPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to a custom .agentchat directory for agents, skills, memory, and MCP configs. Leave empty to use <workspaceRoot>/.agentchat/."
+        },
         "aiAgentChat.telegram.allowedChatIds": {
           "type": "array",
           "items": { "type": "number" },

@@ -9,7 +9,7 @@ They communicate over a typed message protocol (`src/shared/protocol.ts`).
 
 ```
 ┌───────────────────────────── Webview (React) ─────────────────────────────┐
-│ App.tsx ── Composer / HistoryPanel / ToolCallView / MarkdownLite           │
+│ App.tsx ── Composer / HistoryPanel / TelegramPanel / ToolCallView          │
 │   │  postMessage(WebviewToHost)            onHostMessage(HostToWebview)  ▲  │
 └───┼─────────────────────────────────────────────────────────────────────┼──┘
     ▼                                                                       │
@@ -21,6 +21,7 @@ They communicate over a typed message protocol (`src/shared/protocol.ts`).
 │   • agent/tools → ToolSet (file, search, ide, exec, self-improve)          │
 │   • agent/agent → AgentSession.run() → streamText(...).fullStream          │
 │   • sessions → persist transcript + model history                          │
+│ TelegramBotManager ── grammy bot → Telegram handlers → AgentSession.run()   │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -41,6 +42,11 @@ They communicate over a typed message protocol (`src/shared/protocol.ts`).
 | `src/agent/memory.ts` | `MemoryStore` — durable notes. |
 | `src/agent/prompt.ts` | System prompt assembly. |
 | `src/sessions.ts` | `SessionStore` — chat history persistence. |
+| `src/telegram/bot.ts` | `TelegramBotManager` — loads Telegram settings/token, starts/stops the `grammy` bot, and applies chat allow-list middleware. |
+| `src/telegram/handlers.ts` | Telegram command/message handlers and agent-turn runner. |
+| `src/telegram/session.ts` | Per-chat Telegram agent sessions, queues, abort controllers, and pending confirmations. |
+| `src/telegram/toolContext.ts` | Telegram-specific `ToolContext` for notes, file-change notifications, and inline confirmation buttons. |
+| `src/telegram/callbacks.ts` | Streams assistant output, tool notifications, errors, and usage summaries back to Telegram. |
 | `webview-ui/*` | React chat UI. |
 
 ## A turn, end to end
