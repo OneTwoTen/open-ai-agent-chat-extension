@@ -1,0 +1,55 @@
+/*
+ * Bridge Mantine's design tokens to VS Code theme variables so all Mantine
+ * components inherit the user's editor theme automatically (light/dark/HC).
+ */
+:root,
+body {
+  --mantine-color-body: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  --mantine-color-text: var(--vscode-foreground);
+  --mantine-color-dimmed: var(--vscode-descriptionForeground, rgba(140, 140, 140, 0.9));
+
+  --mantine-color-default: var(--vscode-input-background, rgba(128, 128, 128, 0.08));
+  --mantine-color-default-hover: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
+  --mantine-color-default-color: var(--vscode-foreground);
+  --mantine-color-default-border: var(--vscode-panel-border, rgba(128, 128, 128, 0.28));
+
+  --mantine-color-anchor: var(--vscode-textLink-foreground);
+
+  --mantine-primary-color-filled: var(--vscode-button-background, #2f6cf6);
+  --mantine-primary-color-filled-hover: var(--vscode-button-hoverBackground, #2257d6);
+  --mantine-primary-color-light: color-mix(in srgb, var(--vscode-button-background, #2f6cf6) 18%, transparent);
+  --mantine-primary-color-light-hover: color-mix(in srgb, var(--vscode-button-background, #2f6cf6) 26%, transparent);
+  --mantine-primary-color-light-color: var(--vscode-textLink-foreground);
+}
+
+body {
+  background: var(--mantine-color-body);
+  color: var(--mantine-color-text);
+}
+
+/* Inputs and surfaces blend with the editor */
+.mantine-Paper-root,
+.mantine-Card-root {
+  background: var(--vscode-editorWidget-background, var(--mantine-color-body));
+}
+
+.mantine-Input-input,
+.mantine-Textarea-input,
+.mantine-Select-input {
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  border-color: var(--vscode-input-border, var(--mantine-color-default-border));
+}
+
+.mantine-Tabs-tab[data-active] {
+  color: var(--vscode-foreground);
+}
+
+/* Tooltips/menus over the editor */
+.mantine-Tooltip-tooltip,
+.mantine-Menu-dropdown,
+.mantine-Popover-dropdown {
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-menu-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-menu-border, var(--mantine-color-default-border));
+}

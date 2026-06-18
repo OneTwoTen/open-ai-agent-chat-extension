@@ -1,0 +1,233 @@
+{
+  "name": "agent-coding-extension",
+  "displayName": "Open AI Agent Chat",
+  "description": "An agentic coding assistant for VS Code with multi-provider LLM support (OpenAI, Anthropic, Google, Azure, Bedrock, Mistral, Groq, Ollama, and more), three-tier search, multi-agent + skills, and chat history.",
+  "version": "0.0.1",
+  "publisher": "@doct",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Machine Learning",
+    "Programming Languages",
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "aiAgentChat",
+          "title": "AI Agent Chat",
+          "icon": "media/robot.svg"
+        }
+      ]
+    },
+    "views": {
+      "aiAgentChat": [
+        {
+          "type": "webview",
+          "id": "aiAgentChat.chatView",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "aiAgentChat.setApiKey",
+        "title": "AI Agent: Set Provider API Key"
+      },
+      {
+        "command": "aiAgentChat.clearApiKey",
+        "title": "AI Agent: Clear Provider API Key"
+      },
+      {
+        "command": "aiAgentChat.newChat",
+        "title": "AI Agent: New Chat",
+        "icon": "$(add)"
+      },
+      {
+        "command": "aiAgentChat.openInEditor",
+        "title": "AI Agent: Open Chat in Editor (Full Screen)",
+        "icon": "$(screen-full)"
+      },
+      {
+        "command": "aiAgentChat.quickChat",
+        "title": "AI Agent: Quick Chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "aiAgentChat.inlineChat",
+        "title": "AI Agent: Inline Chat",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "aiAgentChat.buildIndex",
+        "title": "AI Agent: Build Repository Index"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "aiAgentChat.inlineChat",
+        "key": "ctrl+i",
+        "mac": "cmd+i",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "aiAgentChat.quickChat",
+        "key": "ctrl+alt+i",
+        "mac": "cmd+alt+i"
+      },
+      {
+        "command": "aiAgentChat.newChat",
+        "key": "ctrl+alt+n",
+        "mac": "cmd+alt+n"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "aiAgentChat.openInEditor",
+          "when": "view == aiAgentChat.chatView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "aiAgentChat.newChat",
+          "when": "view == aiAgentChat.chatView",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AI Agent Chat",
+      "properties": {
+        "aiAgentChat.provider": {
+          "type": "string",
+          "enum": [
+            "openai",
+            "anthropic",
+            "google",
+            "vertex",
+            "azure",
+            "bedrock",
+            "mistral",
+            "cohere",
+            "groq",
+            "deepseek",
+            "fireworks",
+            "togetherai",
+            "xai",
+            "cerebras",
+            "perplexity",
+            "ollama",
+            "custom"
+          ],
+          "default": "openai",
+          "description": "The active LLM provider."
+        },
+        "aiAgentChat.model": {
+          "type": "string",
+          "default": "",
+          "description": "Model id override for the active provider. Leave empty to use the provider's default."
+        },
+        "aiAgentChat.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Custom base URL for providers that support it (OpenAI, Azure, Ollama, Custom)."
+        },
+        "aiAgentChat.azure.resourceName": {
+          "type": "string",
+          "default": "",
+          "description": "Azure OpenAI resource name."
+        },
+        "aiAgentChat.bedrock.region": {
+          "type": "string",
+          "default": "us-east-1",
+          "description": "AWS region for Amazon Bedrock. Credentials come from the AWS_* environment variables."
+        },
+        "aiAgentChat.vertex.project": {
+          "type": "string",
+          "default": "",
+          "description": "Google Cloud project id for Vertex AI."
+        },
+        "aiAgentChat.vertex.location": {
+          "type": "string",
+          "default": "us-central1",
+          "description": "Google Cloud location/region for Vertex AI."
+        },
+        "aiAgentChat.embeddings.provider": {
+          "type": "string",
+          "default": "openai",
+          "description": "Provider used to compute embeddings for Tier 3 semantic search."
+        },
+        "aiAgentChat.embeddings.model": {
+          "type": "string",
+          "default": "",
+          "description": "Embedding model id. Leave empty to use the embeddings provider's default."
+        },
+        "aiAgentChat.maxAgentSteps": {
+          "type": "number",
+          "default": 25,
+          "description": "Maximum number of agent tool-calling iterations per request."
+        },
+        "aiAgentChat.reasoning": {
+          "type": "string",
+          "enum": ["off", "low", "medium", "high"],
+          "default": "off",
+          "description": "Default reasoning effort for models that support it."
+        },
+        "aiAgentChat.permission": {
+          "type": "string",
+          "enum": ["readonly", "ask", "auto"],
+          "default": "ask",
+          "description": "Agent permission level: readonly (no edits), ask (confirm edits), auto (autonomous, destructive actions still confirm)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "compile": "tsc --noEmit",
+    "package": "vsce package",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.21.0",
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.0"
+  },
+  "dependencies": {
+    "ai": "^6.0.0",
+    "zod": "^4.0.0",
+    "@mantine/core": "^9.3.0",
+    "@mantine/hooks": "^9.3.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "@ai-sdk/amazon-bedrock": "^3.0.80",
+    "@ai-sdk/anthropic": "^3.0.80",
+    "@ai-sdk/azure": "^3.0.67",
+    "@ai-sdk/cerebras": "^2.0.54",
+    "@ai-sdk/cohere": "^3.0.36",
+    "@ai-sdk/deepseek": "^2.0.35",
+    "@ai-sdk/fireworks": "^2.0.53",
+    "@ai-sdk/google": "^3.0.80",
+    "@ai-sdk/google-vertex": "^3.0.80",
+    "@ai-sdk/groq": "^3.0.39",
+    "@ai-sdk/mistral": "^3.0.37",
+    "@ai-sdk/openai": "^3.0.66",
+    "@ai-sdk/openai-compatible": "^2.0.0",
+    "@ai-sdk/perplexity": "^3.0.33",
+    "@ai-sdk/togetherai": "^2.0.53",
+    "@ai-sdk/xai": "^3.0.80",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  }
+}
