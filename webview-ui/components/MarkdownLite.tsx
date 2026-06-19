@@ -1,50 +1,221 @@
-import { ActionIcon, CopyButton, Menu, Tooltip, Typography } from "@mantine/core";
+import { ActionIcon, CopyButton, Menu, Tooltip } from "@mantine/core";
 import React, { useMemo } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { Marked } from "marked";
 import { vscode } from "../vscodeApi";
 
-/**
- * Full markdown rendering (GFM: headings, lists, tables, links, etc.) via
- * react-markdown. Code blocks get copy + insert actions; links open in the
- * user's browser through the extension host.
- */
-export function MarkdownLite({ text }: { text: string }) {
-  return (
-    <Typography className="md">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          pre: ({ children }) => <>{children}</>,
-          a: ({ href, children }) => (
-            <a
-              href={href}
-              onClick={(e) => {
-                e.preventDefault();
-                if (href) {
-                  vscode.postMessage({ type: "openUrl", url: href });
-                }
-              }}
-            >
-              {children}
-            </a>
-          ),
-          code: ({ className, children }) => {
-            const raw = String(children ?? "");
-            const langMatch = /language-(\w+)/.exec(className || "");
-            const isBlock = !!langMatch || raw.includes("\n");
-            if (!isBlock) {
-              return <code className="md-inline">{children}</code>;
-            }
-            const content = raw.replace(/\n$/, "");
-            return <CodeBlock content={content} lang={langMatch?.[1]} />;
-          },
-        }}
-      >
-        {text}
-      </ReactMarkdown>
-    </Typography>
-  );
+/* ── LaTeX to Unicode conversion ─────────────────────────────────────── */
+
+const LATEX_SYMBOLS: Record<string, string> = {
+  // Arrows
+  "\\rightarrow": "→",
+  "\\leftarrow": "←",
+  "\\leftrightarrow": "↔",
+  "\\Rightarrow": "⇒",
+  "\\Leftarrow": "⇐",
+  "\\Leftrightarrow": "⇔",
+  "\\uparrow": "↑",
+  "\\downarrow": "↓",
+  "\\updownarrow": "↕",
+  "\\Uparrow": "⇑",
+  "\\Downarrow": "⇓",
+  "\\Updownarrow": "⇕",
+  "\\mapsto": "↦",
+  "\\hookrightarrow": "↪",
+  "\\hookleftarrow": "↩",
+  "\\longrightarrow": "→",
+  "\\longleftarrow": "←",
+  // Relation
+  "\\leq": "≤",
+  "\\geq": "≥",
+  "\\neq": "≠",
+  "\\approx": "≈",
+  "\\equiv": "≡",
+  "\\sim": "∼",
+  "\\simeq": "≃",
+  "\\cong": "≅",
+  "\\propto": "∝",
+  "\\ll": "≪",
+  "\\gg": "≫",
+  "\\prec": "≺",
+  "\\succ": "≻",
+  "\\preceq": "⪯",
+  "\\succeq": "⪰",
+  // Set theory
+  "\\in": "∈",
+  "\\notin": "∉",
+  "\\subset": "⊂",
+  "\\supset": "⊃",
+  "\\subseteq": "⊆",
+  "\\supseteq": "⊇",
+  "\\cup": "∪",
+  "\\cap": "∩",
+  "\\emptyset": "∅",
+  "\\varnothing": "∅",
+  // Logic
+  "\\land": "∧",
+  "\\lor": "∨",
+  "\\neg": "¬",
+  "\\forall": "∀",
+  "\\exists": "∃",
+  "\\nexists": "∄",
+  // Math operators
+  "\\times": "×",
+  "\\div": "÷",
+  "\\pm": "±",
+  "\\mp": "∓",
+  "\\cdot": "·",
+  "\\ast": "∗",
+  "\\star": "⋆",
+  "\\circ": "∘",
+  "\\bullet": "•",
+  "\\oplus": "⊕",
+  "\\otimes": "⊗",
+  // Misc symbols
+  "\\infty": "∞",
+  "\\partial": "∂",
+  "\\nabla": "∇",
+  "\\deg": "°",
+  "\\degree": "°",
+  "\\prime": "′",
+  "\\dprime": "″",
+  "\\angle": "∠",
+  "\\measuredangle": "∡",
+  "\\triangle": "△",
+  "\\diamond": "◇",
+  "\\square": "□",
+  "\\perp": "⊥",
+  "\\parallel": "∥",
+  // Greek letters (lowercase)
+  "\\alpha": "α",
+  "\\beta": "β",
+  "\\gamma": "γ",
+  "\\delta": "δ",
+  "\\epsilon": "ε",
+  "\\varepsilon": "ε",
+  "\\zeta": "ζ",
+  "\\eta": "η",
+  "\\theta": "θ",
+  "\\vartheta": "ϑ",
+  "\\iota": "ι",
+  "\\kappa": "κ",
+  "\\lambda": "λ",
+  "\\mu": "μ",
+  "\\nu": "ν",
+  "\\xi": "ξ",
+  "\\pi": "π",
+  "\\varpi": "ϖ",
+  "\\rho": "ρ",
+  "\\varrho": "ϱ",
+  "\\sigma": "σ",
+  "\\varsigma": "ς",
+  "\\tau": "τ",
+  "\\upsilon": "υ",
+  "\\phi": "φ",
+  "\\varphi": "φ",
+  "\\chi": "χ",
+  "\\psi": "ψ",
+  "\\omega": "ω",
+  // Greek letters (uppercase)
+  "\\Gamma": "Γ",
+  "\\Delta": "Δ",
+  "\\Theta": "Θ",
+  "\\Lambda": "Λ",
+  "\\Xi": "Ξ",
+  "\\Pi": "Π",
+  "\\Sigma": "Σ",
+  "\\Phi": "Φ",
+  "\\Psi": "Ψ",
+  "\\Omega": "Ω",
+  // Fractions and subscripts
+  "\\frac": "/",
+  "\\sqrt": "√",
+  "\\sum": "∑",
+  "\\prod": "∏",
+  "\\int": "∫",
+  "\\iint": "∬",
+  "\\iiint": "∭",
+  "\\oint": "∮",
+  "\\coprod": "∐",
+  "\\vee": "∨",
+  "\\wedge": "∧",
+  "\\bigcap": "⋂",
+  "\\bigcup": "⋃",
+};
+
+function convertLatexToUnicode(text: string): string {
+  let result = text;
+  // Convert \( ... \) and $ ... $ inline math
+  result = result.replace(/\$([^$]+)\$/g, (_, math) => convertMathExpression(math));
+  // Convert \( ... \) inline math
+  result = result.replace(/\\\(([^)]+)\\\)/g, (_, math) => convertMathExpression(math));
+  // Convert \[ ... \] display math - keep as is but convert symbols
+  result = result.replace(/\\\[[\s\S]*?\\\]/g, (match) => {
+    const inner = match.slice(2, -2);
+    return convertMathExpression(inner);
+  });
+  return result;
+}
+
+function convertMathExpression(math: string): string {
+  let result = math;
+  // Replace known symbols
+  for (const [latex, unicode] of Object.entries(LATEX_SYMBOLS)) {
+    result = result.split(latex).join(unicode);
+  }
+  // Handle subscripts: x_1, x_{10}
+  result = result.replace(/_\{?(\w+)\}?/g, (_, sub) => {
+    const subscripts = "₀₁₂₃₄₅₆₇₈₉";
+    return sub
+      .split("")
+      .map((c: string) => {
+        const idx = parseInt(c);
+        return isNaN(idx) ? c : subscripts[idx] || c;
+      })
+      .join("");
+  });
+  // Handle superscripts: x^1, x^{10}
+  result = result.replace(/\^\{?(\w+)\}?/g, (_, sup) => {
+    const superscripts: Record<string, string> = {
+      0: "⁰",
+      1: "¹",
+      2: "²",
+      3: "³",
+      4: "⁴",
+      5: "⁵",
+      6: "⁶",
+      7: "⁷",
+      8: "⁸",
+      9: "⁹",
+      n: "ⁿ",
+      i: "ⁱ",
+    };
+    return sup
+      .split("")
+      .map((c: string) => superscripts[c] || c)
+      .join("");
+  });
+  return result;
+}
+
+/* ── Configure marked ────────────────────────────────────────────────── */
+
+const marked = new Marked();
+
+function setupMarkedRenderer() {
+  marked.use({
+    renderer: {
+      code({ text, lang }: { text: string; lang?: string }) {
+        const content = text.replace(/\n$/, "");
+        const id = `__code_${codeBlockStore.size}__`;
+        codeBlockStore.set(id, { content, lang });
+        return `<div data-code-id="${id}"></div>`;
+      },
+      link({ href, tokens }: { href: string; tokens: any[] }) {
+        const text = tokens.map((t: any) => t.raw || t.text || "").join("");
+        return `<a href="${href}" data-link="${href}">${text}</a>`;
+      },
+    },
+  });
 }
 
 /* ── Syntax highlighting ─────────────────────────────────────────────── */
@@ -68,14 +239,12 @@ function tokenizeLine(line: string): Token[] {
   const tokens: Token[] = [];
   let rest = line;
   while (rest.length > 0) {
-    // Leading whitespace
     const wsMatch = /^(\s+)/.exec(rest);
     if (wsMatch) {
       tokens.push({ text: wsMatch[1] });
       rest = rest.slice(wsMatch[1].length);
       continue;
     }
-    // Order matters: comments & strings first, then others
     const m =
       COMMENT_RE.exec(rest) ||
       STRING_RE.exec(rest) ||
@@ -99,7 +268,6 @@ function tokenizeLine(line: string): Token[] {
       tokens.push({ text: raw, cls });
       rest = rest.slice(raw.length);
     } else {
-      // Accumulate plain text until next potential token start
       let end = 1;
       while (end < rest.length && !/[\s"'`/#!0-9A-Z_a-z]"/.test(rest[end])) {
         end++;
@@ -177,6 +345,97 @@ function CodeBlock({ content, lang }: { content: string; lang?: string }) {
     </div>
   );
 }
+
+/* ── Code block store for React rendering ────────────────────────────── */
+
+const codeBlockStore = new Map<string, { content: string; lang?: string }>();
+
+/* ── Main component ──────────────────────────────────────────────────── */
+
+function MarkdownRenderer({ text }: { text: string }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!ref.current) return;
+
+    const links = ref.current.querySelectorAll<HTMLAnchorElement>("a[data-link]");
+    links.forEach((a) => {
+      const href = a.getAttribute("data-link");
+      a.removeAttribute("data-link");
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (href) {
+          vscode.postMessage({ type: "openUrl", url: href });
+        }
+      });
+    });
+
+    const codeContainers = ref.current.querySelectorAll<HTMLDivElement>("[data-code-id]");
+    codeContainers.forEach((container) => {
+      const id = container.getAttribute("data-code-id");
+      if (!id) return;
+      const block = codeBlockStore.get(id);
+      if (!block) return;
+      codeBlockStore.delete(id);
+
+      const wrapper = document.createElement("div");
+      wrapper.className = "md-code-wrap";
+
+      const actions = document.createElement("div");
+      actions.className = "md-code-actions";
+
+      const copyBtn = document.createElement("button");
+      copyBtn.className = "md-action-btn";
+      copyBtn.textContent = "Copy";
+      copyBtn.addEventListener("click", () => {
+        navigator.clipboard.writeText(block.content);
+        copyBtn.textContent = "Copied!";
+        setTimeout(() => (copyBtn.textContent = "Copy"), 1500);
+      });
+
+      const insertBtn = document.createElement("button");
+      insertBtn.className = "md-action-btn";
+      insertBtn.textContent = "Insert";
+      insertBtn.addEventListener("click", () => {
+        vscode.postMessage({ type: "insertAtCursor", code: block.content });
+      });
+
+      actions.appendChild(copyBtn);
+      actions.appendChild(insertBtn);
+
+      const pre = document.createElement("pre");
+      pre.className = "md-code";
+      if (block.lang) {
+        const langLabel = document.createElement("span");
+        langLabel.className = "md-codelang";
+        langLabel.textContent = block.lang;
+        pre.appendChild(langLabel);
+      }
+      const code = document.createElement("code");
+      code.textContent = block.content;
+      pre.appendChild(code);
+
+      wrapper.appendChild(actions);
+      wrapper.appendChild(pre);
+      container.replaceWith(wrapper);
+    });
+  }, [text]);
+
+  const html = useMemo(() => {
+    codeBlockStore.clear();
+    setupMarkedRenderer();
+    const converted = convertLatexToUnicode(text);
+    return marked.parse(converted) as string;
+  }, [text]);
+
+  return <div ref={ref} className="md" dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+export function MarkdownLite({ text }: { text: string }) {
+  return <MarkdownRenderer text={text} />;
+}
+
+/* ── Icons ───────────────────────────────────────────────────────────── */
 
 function CopyIcon() {
   return (

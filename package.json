@@ -277,7 +277,7 @@
         },
         "aiAgentChat.toolBurnRateThreshold": {
           "type": "number",
-          "default": 3.0,
+          "default": 3,
           "description": "Multiplier above average burn rate to trigger anomaly (e.g. 3.0 = 3x average)."
         },
         "aiAgentChat.toolFrequencyWindowMs": {
@@ -408,6 +408,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ai": "^6.0.0",
     "grammy": "^1.44.0",
+    "marked": "^18.0.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
