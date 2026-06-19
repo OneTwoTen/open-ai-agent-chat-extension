@@ -1,4 +1,9 @@
 import * as vscode from "vscode";
+import {
+  configuredOpenTarget,
+  configuredResolveRemoteLocalhost,
+  openUrl,
+} from "./browser/openUrl";
 import { ChatViewProvider } from "./ChatViewProvider";
 import { getActiveProviderId, PROVIDERS, PROVIDER_IDS, ProviderId, secretKeyFor } from "./providers";
 import { TelegramBotManager } from "./telegram/bot";
@@ -17,6 +22,12 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("aiAgentChat.quickChat", () => provider.quickChat()),
     vscode.commands.registerCommand("aiAgentChat.inlineChat", () => provider.inlineChat()),
     vscode.commands.registerCommand("aiAgentChat.buildIndex", () => provider.buildIndexNow()),
+    vscode.commands.registerCommand("aiAgentChat.openUrl", (input?: string | vscode.Uri) =>
+      openUrlCommand(input)
+    ),
+    vscode.commands.registerCommand("aiAgentChat.openPreviewInBrowser", (input?: string | vscode.Uri) =>
+      openUrlCommand(input, true, context)
+    ),
     vscode.commands.registerCommand("aiAgentChat.setApiKey", async () => {
       const picked = await pickProvider();
       if (!picked) {
@@ -93,4 +104,31 @@ async function pickProvider(): Promise<ProviderId | undefined> {
     { title: "Select a provider" }
   );
   return choice?.id;
+}
+
+async function openUrlCommand(
+  input?: string | vscode.Uri,
+  preview = false,
+  context?: vscode.ExtensionContext,
+): Promise<void> {
+  let url = typeof input === "string" ? input : input?.toString(true);
+  if (!url) {
+    url = await vscode.window.showInputBox({
+      title: preview ? "Open Preview in Browser" : "Open URL",
+      prompt: "Enter a URL to open.",
+      placeHolder: "http://localhost:3000",
+      ignoreFocusOut: true,
+      value: preview ? context?.workspaceState.get<string>("aiAgentChat.lastPreviewUrl", "") : "",
+    });
+  }
+  if (!url?.trim()) {
+    return;
+  }
+  if (preview && context) {
+    await context.workspaceState.update("aiAgentChat.lastPreviewUrl", url.trim());
+  }
+  await openUrl(url.trim(), {
+    target: preview ? "auto" : configuredOpenTarget(),
+    resolveRemoteLocalhost: configuredResolveRemoteLocalhost(),
+  });
 }

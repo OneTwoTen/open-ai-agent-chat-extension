@@ -22,7 +22,7 @@ export function MarkdownLite({ text }: { text: string }) {
               onClick={(e) => {
                 e.preventDefault();
                 if (href) {
-                  vscode.postMessage({ type: "openExternal", url: href });
+                  vscode.postMessage({ type: "openUrl", url: href });
                 }
               }}
             >

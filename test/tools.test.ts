@@ -88,6 +88,57 @@ describe("buildTools – allow-list filtering", () => {
   });
 });
 
+describe("buildTools - open_browser_url", () => {
+  it("opens localhost URLs without confirmation", async () => {
+    const opened: string[] = [];
+    let confirmCalls = 0;
+    const tools = buildTools(
+      makeCtx({
+        confirm: async () => {
+          confirmCalls++;
+          return true;
+        },
+        openUrl: async (url) => {
+          opened.push(url);
+        },
+      }),
+      "all",
+    );
+
+    const result = await (tools.open_browser_url as any).execute({
+      url: "http://localhost:5173",
+    });
+
+    expect(result).toBe("Opened http://localhost:5173.");
+    expect(opened).toEqual(["http://localhost:5173"]);
+    expect(confirmCalls).toBe(0);
+  });
+
+  it("asks before opening public URLs outside auto permission", async () => {
+    let detail = "";
+    const tools = buildTools(
+      makeCtx({
+        permission: "ask",
+        confirm: async (_title, d) => {
+          detail = d;
+          return false;
+        },
+        openUrl: async () => {
+          throw new Error("should not open");
+        },
+      }),
+      "all",
+    );
+
+    const result = await (tools.open_browser_url as any).execute({
+      url: "https://example.com",
+    });
+
+    expect(result).toBe("Open URL declined by the user.");
+    expect(detail).toBe("https://example.com");
+  });
+});
+
 describe("buildTools - diff preview edits", () => {
   it("routes write_file through previewEdit before writing", async () => {
     let preview: { path: string; original: string; updated: string } | undefined;
@@ -136,6 +187,7 @@ describe("TOOL_CATALOG", () => {
     expect(byName.write_file.mutating).toBe(true);
     expect(byName.run_command.mutating).toBe(true);
     expect(byName.read_file.mutating).toBe(false);
+    expect(byName.open_browser_url.mutating).toBe(false);
     expect(byName.search_semantic.mutating).toBe(false);
   });
 

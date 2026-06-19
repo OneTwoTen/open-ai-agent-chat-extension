@@ -71,6 +71,14 @@
         "title": "AI Agent: Build Repository Index"
       },
       {
+        "command": "aiAgentChat.openUrl",
+        "title": "AI Agent: Open URL"
+      },
+      {
+        "command": "aiAgentChat.openPreviewInBrowser",
+        "title": "AI Agent: Open Preview in Browser"
+      },
+      {
         "command": "aiAgentChat.startTelegram",
         "title": "AI Agent: Start Telegram Bot"
       },
@@ -190,6 +198,22 @@
           "type": "string",
           "default": "",
           "description": "Custom base URL for the file analysis provider."
+        },
+        "aiAgentChat.preview.openTarget": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "integratedBrowser",
+            "simpleBrowser",
+            "external"
+          ],
+          "default": "auto",
+          "description": "Where AI Agent Chat opens preview and documentation URLs."
+        },
+        "aiAgentChat.preview.resolveRemoteLocalhost": {
+          "type": "boolean",
+          "default": true,
+          "description": "Resolve remote localhost URLs through VS Code before opening previews."
         },
         "aiAgentChat.azure.resourceName": {
           "type": "string",

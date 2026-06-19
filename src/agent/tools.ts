@@ -4,6 +4,7 @@ import * as path from "path";
 import { promisify } from "util";
 import * as vscode from "vscode";
 import { z } from "zod";
+import { isLocalPreviewUri, isOpenTarget, OpenTarget } from "../browser/openUrl";
 import { MUTATING_TOOLS, PermissionLevel } from "../providers/catalog";
 import { RepoIndex } from "./embeddings";
 import { MemoryStore } from "./memory";
@@ -39,6 +40,8 @@ export interface ToolContext {
   delegate?: (agentId: string, task: string) => Promise<string>;
   /** Track a file modification for the working set. */
   trackFileChange?: (path: string, status: "created" | "modified" | "deleted" | "moved", fromPath?: string) => void;
+  /** Open a URL using the host's configured preview browser. */
+  openUrl?: (url: string, options?: { target?: OpenTarget }) => Promise<void>;
 }
 
 const CONFIRM_TITLES: Record<string, string> = {
@@ -357,6 +360,30 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
       },
     }),
 
+    open_browser_url: tool({
+      description:
+        "Open a URL in the configured VS Code preview browser. Use for local dev servers, docs, or generated files.",
+      inputSchema: z.object({
+        url: z.string().url(),
+        target: z.enum(["auto", "integratedBrowser", "simpleBrowser", "external"]).optional(),
+      }),
+      async execute({ url, target }) {
+        if (!ctx.openUrl) {
+          return "Opening browser URLs is not available in this context.";
+        }
+        const uri = vscode.Uri.parse(url);
+        const local = isLocalPreviewUri(uri);
+        if (!local && ctx.permission !== "auto") {
+          const allowed = await ctx.confirm("Open external URL?", url);
+          if (!allowed) {
+            return "Open URL declined by the user.";
+          }
+        }
+        await ctx.openUrl(url, { target: isOpenTarget(target) ? target : undefined });
+        return `Opened ${url}.`;
+      },
+    }),
+
     // ---- Self-improvement ---------------------------------------------
     remember: tool({
       description:
@@ -667,6 +694,7 @@ export const TOOL_CATALOG: { name: string; description: string; mutating: boolea
   { name: "get_diagnostics", description: "Problems/diagnostics", mutating: false },
   { name: "run_command", description: "Run a shell command", mutating: true },
   { name: "fetch_url", description: "Fetch a URL", mutating: false },
+  { name: "open_browser_url", description: "Open a URL in the preview browser", mutating: false },
   { name: "remember", description: "Save to long-term memory", mutating: false },
   { name: "create_skill", description: "Create/update a skill", mutating: false },
   { name: "delegate", description: "Delegate a subtask to a sub-agent", mutating: false },

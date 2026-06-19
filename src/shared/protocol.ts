@@ -5,6 +5,7 @@
 
 export type ReasoningEffort = "off" | "low" | "medium" | "high";
 export type PermissionLevel = "readonly" | "ask" | "auto";
+export type OpenTarget = "auto" | "integratedBrowser" | "simpleBrowser" | "external";
 
 export interface ProviderCapabilities {
   tools: boolean;
@@ -169,6 +170,7 @@ export type WebviewToHost =
   | { type: "readDroppedPaths"; paths: string[] }
   | { type: "searchFiles"; query: string }
   | { type: "openInEditor" }
+  | { type: "openUrl"; url: string; target?: OpenTarget }
   | { type: "openExternal"; url: string }
   | { type: "exportMarkdown" }
   | { type: "insertAtCursor"; code: string }

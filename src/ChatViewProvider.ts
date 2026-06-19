@@ -5,6 +5,12 @@ import { promisify } from "util";
 import * as vscode from "vscode";
 import { addUsage, AgentCallbacks, AgentSession } from "./agent/agent";
 import { AgentManager, AgentDefinition } from "./agent/agents";
+import {
+  configuredOpenTarget,
+  configuredResolveRemoteLocalhost,
+  isOpenTarget,
+  openUrl,
+} from "./browser/openUrl";
 import { RepoIndex } from "./agent/embeddings";
 import { McpManager } from "./agent/mcp";
 import { MemoryStore } from "./agent/memory";
@@ -432,8 +438,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       case "openInEditor":
         this.openInEditor();
         break;
+      case "openUrl":
+        await openUrl(msg.url, {
+          target: msg.target && isOpenTarget(msg.target) ? msg.target : configuredOpenTarget(),
+          resolveRemoteLocalhost: configuredResolveRemoteLocalhost(),
+        });
+        break;
       case "openExternal":
-        vscode.env.openExternal(vscode.Uri.parse(msg.url));
+        await openUrl(msg.url, {
+          target: configuredOpenTarget(),
+          resolveRemoteLocalhost: configuredResolveRemoteLocalhost(),
+        });
         break;
       case "exportMarkdown":
         await this.exportMarkdown();
@@ -931,6 +946,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       confirm: (title, detail) => this.confirm(title, detail),
       previewEdit: (filePath, original, updated) =>
         this.previewEdit(filePath, original, updated),
+      openUrl: (url, options) =>
+        openUrl(url, {
+          target: options?.target ?? configuredOpenTarget(),
+          resolveRemoteLocalhost: configuredResolveRemoteLocalhost(),
+        }),
       repoIndex: services.index,
       memory: services.memory,
       skills: services.skills,
