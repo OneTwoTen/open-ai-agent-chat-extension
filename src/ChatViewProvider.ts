@@ -703,6 +703,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         providerOptions: prep.providerOptions,
         signal: this.abortController.signal,
         callbacks: this.streamCallbacks(),
+        timeoutMs: this.config().get<number>("modelCallTimeoutMs", 600_000),
+        maxConsecutiveIdentical: this.config().get<number>("maxConsecutiveIdenticalToolCalls", 3),
+        maxPatternBuffer: this.config().get<number>("maxPatternBufferSize", 20),
+        maxHistoryPerTool: this.config().get<number>("maxHistoryPerTool", 20),
+        burnRateWindow: this.config().get<number>("toolBurnRateWindow", 5),
+        burnRateThreshold: this.config().get<number>("toolBurnRateThreshold", 3.0),
+        frequencyWindowMs: this.config().get<number>("toolFrequencyWindowMs", 60_000),
+        maxCallsPerWindow: this.config().get<number>("maxToolCallsPerWindow", 15),
+        maxConsecutiveSimilarReasoning: this.config().get<number>("maxConsecutiveSimilarReasoning", 4),
+        stepTimeoutMs: this.config().get<number>("stepTimeoutMs", 120_000),
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -883,6 +893,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       maxOutputTokens: prep.maxOutputTokens,
       providerOptions: prep.providerOptions,
       signal: this.abortController?.signal ?? new AbortController().signal,
+      timeoutMs: this.config().get<number>("modelCallTimeoutMs", 600_000),
+      maxConsecutiveIdentical: this.config().get<number>("maxConsecutiveIdenticalToolCalls", 3),
+      maxPatternBuffer: this.config().get<number>("maxPatternBufferSize", 20),
+      maxHistoryPerTool: this.config().get<number>("maxHistoryPerTool", 20),
+      burnRateWindow: this.config().get<number>("toolBurnRateWindow", 5),
+      burnRateThreshold: this.config().get<number>("toolBurnRateThreshold", 3.0),
+      frequencyWindowMs: this.config().get<number>("toolFrequencyWindowMs", 60_000),
+      maxCallsPerWindow: this.config().get<number>("maxToolCallsPerWindow", 15),
+      maxConsecutiveSimilarReasoning: this.config().get<number>("maxConsecutiveSimilarReasoning", 4),
+      stepTimeoutMs: this.config().get<number>("stepTimeoutMs", 120_000),
       callbacks: {
         onTextDelta: (t) => {
           finalText += t;
@@ -1536,6 +1556,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         providerOptions: prep.providerOptions,
         signal: this.abortController.signal,
         callbacks: this.streamCallbacks(),
+        timeoutMs: this.config().get<number>("modelCallTimeoutMs", 600_000),
+        maxConsecutiveIdentical: this.config().get<number>("maxConsecutiveIdenticalToolCalls", 3),
+        maxPatternBuffer: this.config().get<number>("maxPatternBufferSize", 20),
+        maxHistoryPerTool: this.config().get<number>("maxHistoryPerTool", 20),
+        burnRateWindow: this.config().get<number>("toolBurnRateWindow", 5),
+        burnRateThreshold: this.config().get<number>("toolBurnRateThreshold", 3.0),
+        frequencyWindowMs: this.config().get<number>("toolFrequencyWindowMs", 60_000),
+        maxCallsPerWindow: this.config().get<number>("maxToolCallsPerWindow", 15),
+        maxConsecutiveSimilarReasoning: this.config().get<number>("maxConsecutiveSimilarReasoning", 4),
+        stepTimeoutMs: this.config().get<number>("stepTimeoutMs", 120_000),
       });
     } catch (err: unknown) {
       this.post({ type: "error", message: err instanceof Error ? err.message : String(err) });

@@ -226,6 +226,56 @@
           "default": 25,
           "description": "Maximum number of agent tool-calling iterations per request."
         },
+        "aiAgentChat.modelCallTimeoutMs": {
+          "type": "number",
+          "default": 600000,
+          "description": "Timeout in milliseconds for the entire model run (default: 10 minutes). Prevents infinite loops."
+        },
+        "aiAgentChat.maxConsecutiveIdenticalToolCalls": {
+          "type": "number",
+          "default": 3,
+          "description": "Max consecutive identical tool calls (same tool + same args) before aborting. Prevents A→A→A loops."
+        },
+        "aiAgentChat.maxPatternBufferSize": {
+          "type": "number",
+          "default": 20,
+          "description": "Max pattern buffer size for cyclic loop detection (A→B→A→B). Higher values detect longer cycles but use more memory."
+        },
+        "aiAgentChat.maxHistoryPerTool": {
+          "type": "number",
+          "default": 20,
+          "description": "Max call history per tool for semantic similarity detection. Prevents repeated identical tool+result combinations."
+        },
+        "aiAgentChat.toolBurnRateWindow": {
+          "type": "number",
+          "default": 5,
+          "description": "Number of recent steps to average for token burn rate anomaly detection."
+        },
+        "aiAgentChat.toolBurnRateThreshold": {
+          "type": "number",
+          "default": 3.0,
+          "description": "Multiplier above average burn rate to trigger anomaly (e.g. 3.0 = 3x average)."
+        },
+        "aiAgentChat.toolFrequencyWindowMs": {
+          "type": "number",
+          "default": 60000,
+          "description": "Time window in ms for tool call frequency analysis (default: 60s)."
+        },
+        "aiAgentChat.maxToolCallsPerWindow": {
+          "type": "number",
+          "default": 15,
+          "description": "Max tool calls per tool within the frequency window before aborting."
+        },
+        "aiAgentChat.maxConsecutiveSimilarReasoning": {
+          "type": "number",
+          "default": 4,
+          "description": "Max consecutive steps with identical reasoning content before flagging thought loop."
+        },
+        "aiAgentChat.stepTimeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "description": "Timeout in ms for a single step (default: 2 minutes). Aborts if a step takes too long."
+        },
         "aiAgentChat.reasoning": {
           "type": "string",
           "enum": [

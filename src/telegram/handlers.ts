@@ -350,6 +350,16 @@ export async function runAgentTurn(
       providerOptions,
       signal: session.abortController!.signal,
       callbacks: wrappedCallbacks,
+      timeoutMs: vscode.workspace.getConfiguration("aiAgentChat").get<number>("modelCallTimeoutMs", 600_000),
+      maxConsecutiveIdentical: vscode.workspace.getConfiguration("aiAgentChat").get<number>("maxConsecutiveIdenticalToolCalls", 3),
+      maxPatternBuffer: vscode.workspace.getConfiguration("aiAgentChat").get<number>("maxPatternBufferSize", 20),
+      maxHistoryPerTool: vscode.workspace.getConfiguration("aiAgentChat").get<number>("maxHistoryPerTool", 20),
+      burnRateWindow: vscode.workspace.getConfiguration("aiAgentChat").get<number>("toolBurnRateWindow", 5),
+      burnRateThreshold: vscode.workspace.getConfiguration("aiAgentChat").get<number>("toolBurnRateThreshold", 3.0),
+      frequencyWindowMs: vscode.workspace.getConfiguration("aiAgentChat").get<number>("toolFrequencyWindowMs", 60_000),
+      maxCallsPerWindow: vscode.workspace.getConfiguration("aiAgentChat").get<number>("maxToolCallsPerWindow", 15),
+      maxConsecutiveSimilarReasoning: vscode.workspace.getConfiguration("aiAgentChat").get<number>("maxConsecutiveSimilarReasoning", 4),
+      stepTimeoutMs: vscode.workspace.getConfiguration("aiAgentChat").get<number>("stepTimeoutMs", 120_000),
     });
     await callbacks.flush();
 
