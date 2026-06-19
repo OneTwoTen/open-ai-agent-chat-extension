@@ -153,6 +153,10 @@ export interface Actions {
   setTelegramToken(): void;
   updateTelegramConfig(config: TelegramConfigUpdate): void;
   clearTelegramActivity(): void;
+  exportAgent(a: AgentDTO): void;
+  exportSkill(s: SkillDTO): void;
+  importAgent(): void;
+  importSkill(): void;
 }
 
 export function useController(): { state: ChatState; actions: Actions } {
@@ -277,6 +281,18 @@ export function useController(): { state: ChatState; actions: Actions } {
             telegramActivity: [...s.telegramActivity.slice(-49), msg.item],
           }));
           break;
+        case "importedAgent":
+          setState((s) => ({
+            ...s,
+            agentDtos: [...s.agentDtos, msg.agent],
+          }));
+          break;
+        case "importedSkill":
+          setState((s) => ({
+            ...s,
+            skills: [...s.skills, msg.skill],
+          }));
+          break;
       }
     });
     vscode.postMessage({ type: "ready" });
@@ -353,6 +369,10 @@ export function useController(): { state: ChatState; actions: Actions } {
     setTelegramToken: () => vscode.postMessage({ type: "setTelegramToken", token: "" }),
     updateTelegramConfig: (config) => vscode.postMessage({ type: "updateTelegramConfig", config }),
     clearTelegramActivity: () => patch({ telegramActivity: [] }),
+    exportAgent: (a) => vscode.postMessage({ type: "exportAgent", agent: a }),
+    exportSkill: (s) => vscode.postMessage({ type: "exportSkill", skill: s }),
+    importAgent: () => vscode.postMessage({ type: "importAgent" }),
+    importSkill: () => vscode.postMessage({ type: "importSkill" }),
   };
 
   return { state, actions };

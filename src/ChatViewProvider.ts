@@ -48,6 +48,7 @@ import {
   PermissionLevel,
   ProviderConnectionSettings,
   ReasoningEffort,
+  SkillDTO,
   TelegramActivityItem,
   ToolCatalogItem,
   TranscriptItem,
@@ -226,6 +227,70 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     await this.buildIndex();
   }
 
+  async runE2EScenario(input: {
+    text: string;
+    attachments?: Attachment[];
+    mockSteps?: unknown[];
+  }): Promise<{
+    posted: HostToWebview[];
+    session: {
+      transcript: TranscriptItem[];
+      historyLength: number;
+      sessions: { id: string; title: string; updatedAt: number }[];
+    };
+    workingSet: WorkingSetFile[];
+  }> {
+    if (!Array.isArray(input.mockSteps)) {
+      throw new Error("E2E scenario command requires mockSteps.");
+    }
+
+    const posted: HostToWebview[] = [];
+    const previousPermission = this.permission;
+    const previousE2E = process.env.AI_AGENT_CHAT_E2E;
+    const previousSteps = process.env.AI_AGENT_CHAT_E2E_MOCK_STEPS;
+    const fakeWebview = {
+      postMessage: (msg: HostToWebview) => {
+        posted.push(msg);
+        return Promise.resolve(true);
+      },
+    } as unknown as vscode.Webview;
+
+    this.webviews.add(fakeWebview);
+    try {
+      this.permission = "auto";
+      process.env.AI_AGENT_CHAT_E2E = "1";
+      process.env.AI_AGENT_CHAT_E2E_MOCK_STEPS = JSON.stringify(input.mockSteps);
+      await this.dispatchMessage({ type: "ready" });
+      await this.dispatchMessage({
+        type: "sendMessage",
+        text: input.text,
+        attachments: input.attachments ?? [],
+      });
+      return {
+        posted,
+        session: {
+          transcript: [...this.transcript],
+          historyLength: this.session.getHistory().length,
+          sessions: await this.sessionStore.list(),
+        },
+        workingSet: [...this.workingSet],
+      };
+    } finally {
+      this.permission = previousPermission;
+      if (previousE2E === undefined) {
+        delete process.env.AI_AGENT_CHAT_E2E;
+      } else {
+        process.env.AI_AGENT_CHAT_E2E = previousE2E;
+      }
+      if (previousSteps === undefined) {
+        delete process.env.AI_AGENT_CHAT_E2E_MOCK_STEPS;
+      } else {
+        process.env.AI_AGENT_CHAT_E2E_MOCK_STEPS = previousSteps;
+      }
+      this.webviews.delete(fakeWebview);
+    }
+  }
+
   async quickChat(): Promise<void> {
     const text = await vscode.window.showInputBox({
       title: "AI Agent Quick Chat",
@@ -312,7 +377,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         await this.selectProvider(msg.provider as ProviderId);
         break;
       case "selectModel":
-        await this.config().update("model", msg.model, vscode.ConfigurationTarget.Global);
+        await this.config().update("model", msg.model, vscode.ConfigurationTarget.Workspace);
         break;
       case "saveProviderSettings":
         await this.saveProviderSettings(msg.settings);
@@ -464,6 +529,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         }
         await this.sendTelegramStatus();
         break;
+      // ---- Import / Export -----------------------------------------------
+      case "exportAgent":
+        await this.exportAgent(msg.agent);
+        break;
+      case "exportSkill":
+        await this.exportSkill(msg.skill);
+        break;
+      case "importAgent":
+        await this.importAgent();
+        break;
+      case "importSkill":
+        await this.importSkill();
+        break;
     }
   }
 
@@ -510,8 +588,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   }
 
   private async selectProvider(provider: ProviderId): Promise<void> {
-    await this.config().update("provider", provider, vscode.ConfigurationTarget.Global);
-    await this.config().update("model", "", vscode.ConfigurationTarget.Global);
+    await this.config().update("provider", provider, vscode.ConfigurationTarget.Workspace);
+    await this.config().update("model", "", vscode.ConfigurationTarget.Workspace);
     this.post({
       type: "providerChanged",
       provider,
@@ -525,9 +603,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       throw new Error(`Unknown provider '${settings.provider}'.`);
     }
     const provider = settings.provider;
-    await this.config().update("provider", provider, vscode.ConfigurationTarget.Global);
-    await this.config().update("model", settings.model.trim(), vscode.ConfigurationTarget.Global);
-    await this.config().update("baseUrl", settings.baseUrl.trim(), vscode.ConfigurationTarget.Global);
+    await this.config().update("provider", provider, vscode.ConfigurationTarget.Workspace);
+    await this.config().update("model", settings.model.trim(), vscode.ConfigurationTarget.Workspace);
+    await this.config().update("baseUrl", settings.baseUrl.trim(), vscode.ConfigurationTarget.Workspace);
     if (settings.apiKey?.trim()) {
       await this.context.secrets.store(secretKeyFor(provider), settings.apiKey.trim());
     }
@@ -542,18 +620,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     await config.update(
       "fileAnalysis.enabled",
       settings.enabled,
-      vscode.ConfigurationTarget.Global
+      vscode.ConfigurationTarget.Workspace
     );
     await config.update(
       "fileAnalysis.provider",
       settings.provider,
-      vscode.ConfigurationTarget.Global
+      vscode.ConfigurationTarget.Workspace
     );
-    await config.update("fileAnalysis.model", settings.model.trim(), vscode.ConfigurationTarget.Global);
+    await config.update("fileAnalysis.model", settings.model.trim(), vscode.ConfigurationTarget.Workspace);
     await config.update(
       "fileAnalysis.baseUrl",
       settings.baseUrl.trim(),
-      vscode.ConfigurationTarget.Global
+      vscode.ConfigurationTarget.Workspace
     );
     if (settings.apiKey?.trim()) {
       await this.context.secrets.store("aiAgentChat.fileAnalysis.apiKey", settings.apiKey.trim());
@@ -1406,6 +1484,114 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       }
     }
     return lines.join("\n");
+  }
+
+  // ---- Import / Export agents & skills ---------------------------------
+
+  private async exportAgent(agent: AgentDTO): Promise<void> {
+    const { builtIn, ...data } = agent;
+    const uri = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file(`${agent.id || "agent"}.json`),
+      filters: { "Agent definition": ["json"] },
+      saveLabel: "Export agent",
+    });
+    if (!uri) return;
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(JSON.stringify(data, null, 2), "utf8"));
+    vscode.window.showInformationMessage(`Exported agent '${agent.name}' to ${uri.fsPath}.`);
+  }
+
+  private async exportSkill(skill: SkillDTO): Promise<void> {
+    const frontmatter = [
+      "---",
+      `name: ${skill.name}`,
+      `description: ${skill.description || ""}`,
+      `alwaysApply: ${skill.alwaysApply}`,
+      "---",
+      "",
+    ].join("\n");
+    const content = frontmatter + skill.body;
+    const slug = skill.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const uri = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file(`${slug || "skill"}.md`),
+      filters: { "Skill definition": ["md"] },
+      saveLabel: "Export skill",
+    });
+    if (!uri) return;
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(content, "utf8"));
+    vscode.window.showInformationMessage(`Exported skill '${skill.name}' to ${uri.fsPath}.`);
+  }
+
+  private async importAgent(): Promise<void> {
+    const uris = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: false,
+      canSelectMany: false,
+      filters: { "Agent definition": ["json"] },
+      openLabel: "Import agent",
+    });
+    if (!uris || uris.length === 0) return;
+    try {
+      const bytes = await vscode.workspace.fs.readFile(uris[0]);
+      const raw = JSON.parse(Buffer.from(bytes).toString("utf8"));
+      const agent: AgentDTO = {
+        id: String(raw.id || path.basename(uris[0].fsPath, ".json")),
+        name: String(raw.name || raw.id || "Imported Agent"),
+        description: String(raw.description || ""),
+        systemPrompt: String(raw.systemPrompt || ""),
+        tools: Array.isArray(raw.tools) ? raw.tools.map(String) : "all",
+        provider: raw.provider,
+        model: raw.model,
+        skills: Array.isArray(raw.skills) ? raw.skills.map(String) : undefined,
+        subAgents: Array.isArray(raw.subAgents) ? raw.subAgents.map(String) : undefined,
+      };
+      this.post({ type: "importedAgent", agent });
+    } catch (err: unknown) {
+      vscode.window.showErrorMessage(`Failed to import agent: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private async importSkill(): Promise<void> {
+    const uris = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: false,
+      canSelectMany: false,
+      filters: { "Skill definition": ["md"] },
+      openLabel: "Import skill",
+    });
+    if (!uris || uris.length === 0) return;
+    try {
+      const bytes = await vscode.workspace.fs.readFile(uris[0]);
+      const text = Buffer.from(bytes).toString("utf8");
+      const skill = this.parseSkillFile(text, uris[0].fsPath);
+      this.post({ type: "importedSkill", skill });
+    } catch (err: unknown) {
+      vscode.window.showErrorMessage(`Failed to import skill: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private parseSkillFile(text: string, filePath: string): SkillDTO {
+    let name = "";
+    let description = "";
+    let alwaysApply = false;
+    let body = text;
+    const fmMatch = text.match(/^---\n([\s\S]*?)\n---\n/);
+    if (fmMatch) {
+      const fm = fmMatch[1];
+      body = text.slice(fmMatch[0].length);
+      for (const line of fm.split("\n")) {
+        const [key, ...rest] = line.split(":");
+        if (key && rest.length > 0) {
+          const val = rest.join(":").trim();
+          if (key === "name") name = val;
+          else if (key === "description") description = val;
+          else if (key === "alwaysApply") alwaysApply = val === "true";
+        }
+      }
+    }
+    if (!name) {
+      name = path.basename(filePath, path.extname(filePath));
+    }
+    return { name, description, alwaysApply, body: body.trim() };
   }
 
   // ---- Context chips --------------------------------------------------

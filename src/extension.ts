@@ -66,6 +66,14 @@ export function activate(context: vscode.ExtensionContext): void {
     telegramBot,
   );
 
+  if (context.extensionMode === vscode.ExtensionMode.Test) {
+    context.subscriptions.push(
+      vscode.commands.registerCommand("aiAgentChat.e2e.runScenario", (input) =>
+        provider.runE2EScenario(input)
+      )
+    );
+  }
+
   // Auto-start Telegram bot if configured
   telegramBot.tryAutoStart();
 }

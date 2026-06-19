@@ -221,6 +221,16 @@ body,
 .md-code-wrap:hover .md-code-actions {
   opacity: 1;
 }
+
+/* Syntax highlighting token colors — bridge to VS Code theme */
+.md-code .tok-keyword { color: var(--vscode-editorSyntaxHighlighting, #569cd6); }
+.md-code .tok-string { color: var(--vscode-editorSyntaxHighlighting, #ce9178); }
+.md-code .tok-comment { color: var(--vscode-editorComments, #6a9955); font-style: italic; }
+.md-code .tok-number { color: var(--vscode-editorSyntaxHighlighting, #b5cea8); }
+.md-code .tok-function { color: var(--vscode-editorSyntaxHighlighting, #dcdcaa); }
+.md-code .tok-type { color: var(--vscode-editorSyntaxHighlighting, #4ec9b0); }
+.md-code .tok-operator { color: var(--vscode-editorSyntaxHighlighting, #d4d4d4); }
+.md-code .tok-regex { color: var(--vscode-editorSyntaxHighlighting, #d16969); }
 /* Tighten Typography spacing inside chat bubbles */
 .md > :first-child {
   margin-top: 0;

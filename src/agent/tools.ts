@@ -48,6 +48,12 @@ const CONFIRM_TITLES: Record<string, string> = {
   move_file: "Move file?",
   delete_file: "Delete?",
   run_command: "Run shell command?",
+  git_stage: "Stage files?",
+  git_unstage: "Unstage files?",
+  git_commit: "Create commit?",
+  git_branch: "Switch branch?",
+  git_push: "Push to remote?",
+  git_pull: "Pull from remote?",
 };
 
 /**
@@ -398,6 +404,225 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
         return ctx.delegate(agentId, task);
       },
     }),
+
+    // ---- Git tools -------------------------------------------------------
+    git_status: tool({
+      description: "Show the working tree status in porcelain format.",
+      inputSchema: z.object({}),
+      async execute() {
+        try {
+          const { stdout } = await execAsync("git status --porcelain", {
+            cwd: ctx.workspaceRoot,
+            timeout: 10_000,
+          });
+          return stdout.trim() || "(clean working tree)";
+        } catch (err: unknown) {
+          const e = err as { stderr?: string; message?: string };
+          return `git status failed: ${e.stderr || e.message || "unknown error"}`;
+        }
+      },
+    }),
+
+    git_diff: tool({
+      description: "Show file differences. Use unstaged for working-tree changes, staged for index changes.",
+      inputSchema: z.object({
+        staged: z.boolean().optional().describe("If true, show staged diff (git diff --cached)."),
+        path: z.string().optional().describe("Optional file path to limit diff."),
+      }),
+      async execute({ staged, path: p }) {
+        try {
+          const args = ["diff"];
+          if (staged) args.push("--cached");
+          if (p) args.push("--", p);
+          const { stdout } = await execAsync(`git ${args.join(" ")}`, {
+            cwd: ctx.workspaceRoot,
+            timeout: 10_000,
+            maxBuffer: 5 * 1024 * 1024,
+          });
+          const output = stdout.trim();
+          if (!output) return staged ? "(no staged changes)" : "(no unstaged changes)";
+          const MAX = 60_000;
+          return output.length > MAX
+            ? output.slice(0, MAX) + `\n[...truncated ${output.length - MAX} chars]`
+            : output;
+        } catch (err: unknown) {
+          const e = err as { stderr?: string; message?: string };
+          return `git diff failed: ${e.stderr || e.message || "unknown error"}`;
+        }
+      },
+    }),
+
+    git_log: tool({
+      description: "Show recent commit history.",
+      inputSchema: z.object({
+        count: z.number().optional().describe("Number of commits to show (default 15)."),
+      }),
+      async execute({ count }) {
+        try {
+          const n = count ?? 15;
+          const { stdout } = await execAsync(
+            `git log --oneline -n ${n}`,
+            { cwd: ctx.workspaceRoot, timeout: 10_000 }
+          );
+          return stdout.trim() || "(no commits)";
+        } catch (err: unknown) {
+          const e = err as { stderr?: string; message?: string };
+          return `git log failed: ${e.stderr || e.message || "unknown error"}`;
+        }
+      },
+    }),
+
+    git_stage: tool({
+      description: "Stage files for the next commit (git add).",
+      inputSchema: z.object({
+        files: z.array(z.string()).describe("List of workspace-relative file paths to stage."),
+      }),
+      async execute({ files }) {
+        if (!(await ensure(ctx, "git_stage", files.join(", ")))) {
+          return "Stage declined by the user.";
+        }
+        try {
+          const paths = files.map((f) => `"${f}"`).join(" ");
+          const { stdout, stderr } = await execAsync(`git add ${paths}`, {
+            cwd: ctx.workspaceRoot,
+            timeout: 10_000,
+          });
+          return `Staged ${files.length} file(s).${stdout ? "\n" + stdout : ""}${stderr ? "\n" + stderr : ""}`;
+        } catch (err: unknown) {
+          const e = err as { stdout?: string; stderr?: string; message?: string };
+          return `git add failed: ${[e.stdout, e.stderr, e.message].filter(Boolean).join("\n")}`;
+        }
+      },
+    }),
+
+    git_unstage: tool({
+      description: "Unstage files from the index (git restore --staged).",
+      inputSchema: z.object({
+        files: z.array(z.string()).describe("List of workspace-relative file paths to unstage."),
+      }),
+      async execute({ files }) {
+        if (!(await ensure(ctx, "git_unstage", files.join(", ")))) {
+          return "Unstage declined by the user.";
+        }
+        try {
+          const paths = files.map((f) => `"${f}"`).join(" ");
+          const { stdout, stderr } = await execAsync(`git restore --staged ${paths}`, {
+            cwd: ctx.workspaceRoot,
+            timeout: 10_000,
+          });
+          return `Unstaged ${files.length} file(s).${stdout ? "\n" + stdout : ""}${stderr ? "\n" + stderr : ""}`;
+        } catch (err: unknown) {
+          const e = err as { stdout?: string; stderr?: string; message?: string };
+          return `git restore --staged failed: ${[e.stdout, e.stderr, e.message].filter(Boolean).join("\n")}`;
+        }
+      },
+    }),
+
+    git_commit: tool({
+      description: "Create a new commit with a message.",
+      inputSchema: z.object({
+        message: z.string().describe("Commit message."),
+      }),
+      async execute({ message }) {
+        if (!(await ensure(ctx, "git_commit", message))) {
+          return "Commit declined by the user.";
+        }
+        try {
+          const { stdout, stderr } = await execAsync(
+            `git commit -m ${JSON.stringify(message)}`,
+            { cwd: ctx.workspaceRoot, timeout: 15_000 }
+          );
+          return [stdout, stderr].filter(Boolean).join("\n").trim() || "Commit created.";
+        } catch (err: unknown) {
+          const e = err as { stdout?: string; stderr?: string; message?: string };
+          return `git commit failed: ${[e.stdout, e.stderr, e.message].filter(Boolean).join("\n")}`;
+        }
+      },
+    }),
+
+    git_branch: tool({
+      description: "List, create, or switch git branches.",
+      inputSchema: z.object({
+        name: z.string().optional().describe("Branch name to create or switch to. Omit to list branches."),
+        create: z.boolean().optional().describe("If true, create a new branch (git checkout -b)."),
+      }),
+      async execute({ name, create }) {
+        if (!name) {
+          try {
+            const { stdout } = await execAsync("git branch --list", {
+              cwd: ctx.workspaceRoot,
+              timeout: 10_000,
+            });
+            return stdout.trim() || "(no branches)";
+          } catch (err: unknown) {
+            const e = err as { stderr?: string; message?: string };
+            return `git branch failed: ${e.stderr || e.message || "unknown error"}`;
+          }
+        }
+        if (!(await ensure(ctx, "git_branch", create ? `create ${name}` : `switch to ${name}`))) {
+          return "Branch operation declined by the user.";
+        }
+        try {
+          const cmd = create ? `git checkout -b ${name}` : `git checkout ${name}`;
+          const { stdout, stderr } = await execAsync(cmd, {
+            cwd: ctx.workspaceRoot,
+            timeout: 10_000,
+          });
+          return [stdout, stderr].filter(Boolean).join("\n").trim() || `Switched to branch '${name}'.`;
+        } catch (err: unknown) {
+          const e = err as { stdout?: string; stderr?: string; message?: string };
+          return `git branch failed: ${[e.stdout, e.stderr, e.message].filter(Boolean).join("\n")}`;
+        }
+      },
+    }),
+
+    git_push: tool({
+      description: "Push commits to the remote repository.",
+      inputSchema: z.object({
+        remote: z.string().optional().describe("Remote name (default: origin)."),
+        branch: z.string().optional().describe("Branch name (default: current branch)."),
+      }),
+      async execute({ remote, branch }) {
+        const target = `${remote || "origin"} ${branch || "HEAD"}`;
+        if (!(await ensure(ctx, "git_push", target))) {
+          return "Push declined by the user.";
+        }
+        try {
+          const { stdout, stderr } = await execAsync(
+            `git push ${remote || "origin"} ${branch || "HEAD"}`,
+            { cwd: ctx.workspaceRoot, timeout: 60_000 }
+          );
+          return [stdout, stderr].filter(Boolean).join("\n").trim() || "Push completed.";
+        } catch (err: unknown) {
+          const e = err as { stdout?: string; stderr?: string; message?: string };
+          return `git push failed: ${[e.stdout, e.stderr, e.message].filter(Boolean).join("\n")}`;
+        }
+      },
+    }),
+
+    git_pull: tool({
+      description: "Pull commits from the remote repository.",
+      inputSchema: z.object({
+        remote: z.string().optional().describe("Remote name (default: origin)."),
+        branch: z.string().optional().describe("Branch name (default: current branch)."),
+      }),
+      async execute({ remote, branch }) {
+        const target = `${remote || "origin"} ${branch || ""}`.trim();
+        if (!(await ensure(ctx, "git_pull", target))) {
+          return "Pull declined by the user.";
+        }
+        try {
+          const { stdout, stderr } = await execAsync(
+            `git pull ${remote || "origin"} ${branch || ""}`.trim(),
+            { cwd: ctx.workspaceRoot, timeout: 60_000 }
+          );
+          return [stdout, stderr].filter(Boolean).join("\n").trim() || "Pull completed.";
+        } catch (err: unknown) {
+          const e = err as { stdout?: string; stderr?: string; message?: string };
+          return `git pull failed: ${[e.stdout, e.stderr, e.message].filter(Boolean).join("\n")}`;
+        }
+      },
+    }),
   };
 
   // The delegate tool only exists when the context can actually run sub-agents.
@@ -445,4 +670,13 @@ export const TOOL_CATALOG: { name: string; description: string; mutating: boolea
   { name: "remember", description: "Save to long-term memory", mutating: false },
   { name: "create_skill", description: "Create/update a skill", mutating: false },
   { name: "delegate", description: "Delegate a subtask to a sub-agent", mutating: false },
+  { name: "git_status", description: "Show working tree status", mutating: false },
+  { name: "git_diff", description: "Show unstaged/staged diff", mutating: false },
+  { name: "git_log", description: "Show recent commit history", mutating: false },
+  { name: "git_stage", description: "Stage files (git add)", mutating: true },
+  { name: "git_unstage", description: "Unstage files (git restore --staged)", mutating: true },
+  { name: "git_commit", description: "Create a commit", mutating: true },
+  { name: "git_branch", description: "List/create/switch branches", mutating: true },
+  { name: "git_push", description: "Push to remote", mutating: true },
+  { name: "git_pull", description: "Pull from remote", mutating: true },
 ];

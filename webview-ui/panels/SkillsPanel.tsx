@@ -9,6 +9,7 @@ import {
   Text,
   TextInput,
   Textarea,
+  Tooltip,
 } from "@mantine/core";
 import React, { useEffect, useState } from "react";
 import { SkillDTO } from "../../src/shared/protocol";
@@ -93,9 +94,16 @@ export function SkillsPanel({ state, actions }: { state: ChatState; actions: Act
     <ScrollArea className="panel-scroll">
       <Group justify="space-between" mb="sm">
         <Text fw={700}>Skills</Text>
-        <Button size="xs" onClick={() => setEditing(blankSkill())}>
-          + New skill
-        </Button>
+        <Group gap={4}>
+          <Tooltip label="Import skill from file">
+            <Button size="xs" variant="subtle" onClick={() => actions.importSkill()}>
+              Import
+            </Button>
+          </Tooltip>
+          <Button size="xs" onClick={() => setEditing(blankSkill())}>
+            + New skill
+          </Button>
+        </Group>
       </Group>
       <Stack gap="xs">
         {state.skills.length === 0 && (
@@ -110,12 +118,20 @@ export function SkillsPanel({ state, actions }: { state: ChatState; actions: Act
                 <Group gap={6}>
                   <Text fw={600} size="sm">{s.name}</Text>
                   {s.alwaysApply && <Badge size="xs" color="green" variant="light">always</Badge>}
+                  {s.version && s.version > 1 && (
+                    <Badge size="xs" variant="outline">v{s.version}</Badge>
+                  )}
                 </Group>
                 <Text size="xs" c="dimmed" lineClamp={2}>{s.description || s.body}</Text>
               </div>
               <Button size="compact-xs" variant="light" onClick={() => setEditing({ ...s })}>
                 Edit
               </Button>
+              <Tooltip label="Export as .md">
+                <Button size="compact-xs" variant="subtle" onClick={() => actions.exportSkill(s)}>
+                  Export
+                </Button>
+              </Tooltip>
             </Group>
           </Card>
         ))}

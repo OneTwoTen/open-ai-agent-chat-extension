@@ -35,6 +35,9 @@ const READ_ONLY_TOOLS = [
   "get_active_selection",
   "get_diagnostics",
   "fetch_url",
+  "git_status",
+  "git_diff",
+  "git_log",
 ];
 
 export const BUILTIN_AGENTS: AgentDefinition[] = [

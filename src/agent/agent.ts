@@ -373,6 +373,11 @@ export class AgentSession {
     
     this.messages.push({ role: "user", content: userContent });
 
+    if (process.env.AI_AGENT_CHAT_E2E === "1" && process.env.AI_AGENT_CHAT_E2E_MOCK_STEPS) {
+      await this.runE2EMock(opts);
+      return;
+    }
+
     // Initialize advanced loop detection state
     const loopState = createAdvancedLoopState({
       maxConsecutiveIdentical: opts.maxConsecutiveIdentical,
@@ -569,6 +574,67 @@ export class AgentSession {
       clearTimeout(timeoutId);
       opts.signal.removeEventListener("abort", onExternalAbort);
     }
+  }
+
+  private async runE2EMock(opts: RunOptions): Promise<void> {
+    const steps = JSON.parse(process.env.AI_AGENT_CHAT_E2E_MOCK_STEPS || "[]") as Array<
+      | { type: "text"; text: string }
+      | { type: "tool"; id?: string; name: string; args: unknown }
+    >;
+    const responseParts: string[] = [];
+    const toolMessages: ModelMessage[] = [];
+
+    for (const [index, step] of steps.entries()) {
+      if (opts.signal.aborted) {
+        opts.callbacks.onError("Request cancelled.");
+        return;
+      }
+
+      if (step.type === "text") {
+        responseParts.push(step.text);
+        opts.callbacks.onTextDelta(step.text);
+        continue;
+      }
+
+      const id = step.id || `e2e-tool-${index}`;
+      const tool = opts.tools[step.name] as { execute?: (args: unknown) => Promise<unknown> | unknown } | undefined;
+      if (!tool?.execute) {
+        throw new Error(`E2E mock requested unknown or non-executable tool '${step.name}'.`);
+      }
+
+      opts.callbacks.onToolCall(id, step.name, step.args);
+      const result = await tool.execute(step.args);
+      opts.callbacks.onToolResult(id, step.name, result);
+      opts.callbacks.onStepUsage([step.name], {
+        inputTokens: 11,
+        outputTokens: 7,
+        cachedInputTokens: 0,
+        reasoningTokens: 0,
+        totalTokens: 18,
+      });
+      toolMessages.push({
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: id,
+            toolName: step.name,
+            output: { type: "text", value: typeof result === "string" ? result : JSON.stringify(result) },
+          },
+        ],
+      } as ModelMessage);
+    }
+
+    this.messages.push(...toolMessages);
+    this.messages.push({ role: "assistant", content: responseParts.join("") });
+    opts.callbacks.onFinalUsage({
+      inputTokens: 19,
+      outputTokens: 13,
+      cachedInputTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 32,
+    });
+    opts.callbacks.onDone();
   }
 }
 

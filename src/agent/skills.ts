@@ -98,6 +98,8 @@ export interface Skill {
   /** When true, the skill is always injected into the system prompt. */
   alwaysApply: boolean;
   body: string;
+  /** Monotonically increasing version number (starts at 1). */
+  version: number;
 }
 
 /** Parse very small YAML-style frontmatter (key: value pairs). */
@@ -141,11 +143,13 @@ export class SkillManager {
       }
       const { meta, body } = parseFrontmatter(text);
       const name = meta.name || path.basename(file.fsPath, ".md");
+      const version = parseInt(meta.version || "1", 10) || 1;
       skills.push({
         name,
         description: meta.description || "",
         alwaysApply: meta.alwaysapply === "true" || meta.always === "true",
         body: body.trim(),
+        version,
       });
     }
     return skills;
@@ -155,23 +159,44 @@ export class SkillManager {
     return (await this.list()).find((s) => s.name === name);
   }
 
-  /** Create or overwrite a skill file. */
+  /** Create or overwrite a skill file, with versioning and backup. */
   async save(skill: {
     name: string;
     description?: string;
     alwaysApply?: boolean;
     body: string;
+    version?: number;
   }): Promise<void> {
     await vscode.workspace.fs.createDirectory(this.dir);
+    const file = vscode.Uri.joinPath(this.dir, `${slug(skill.name)}.md`);
+
+    // Determine version: use provided, or increment from existing file
+    let version = skill.version ?? 1;
+    const existing = await readText(file);
+    if (existing) {
+      const { meta } = parseFrontmatter(existing);
+      const prevVersion = parseInt(meta.version || "1", 10) || 1;
+      version = skill.version ?? prevVersion + 1;
+
+      // Backup the existing version before overwriting
+      const backupDir = vscode.Uri.joinPath(this.dir, ".backups");
+      await vscode.workspace.fs.createDirectory(backupDir);
+      const backupFile = vscode.Uri.joinPath(
+        backupDir,
+        `${slug(skill.name)}-v${prevVersion}.md`
+      );
+      await vscode.workspace.fs.writeFile(backupFile, Buffer.from(existing, "utf8"));
+    }
+
     const frontmatter = [
       "---",
       `name: ${skill.name}`,
       `description: ${skill.description ?? ""}`,
       `alwaysApply: ${skill.alwaysApply ? "true" : "false"}`,
+      `version: ${version}`,
       "---",
       "",
     ].join("\n");
-    const file = vscode.Uri.joinPath(this.dir, `${slug(skill.name)}.md`);
     await vscode.workspace.fs.writeFile(
       file,
       Buffer.from(frontmatter + skill.body.trim() + "\n", "utf8")
@@ -187,6 +212,30 @@ export class SkillManager {
     return skills
       .map((s) => `<skill name="${s.name}">\n${s.body}\n</skill>`)
       .join("\n\n");
+  }
+
+  /** List backup versions for a skill (excluding the current version). */
+  async listVersions(name: string): Promise<{ version: number; timestamp: string }[]> {
+    const backupDir = vscode.Uri.joinPath(this.dir, ".backups");
+    const files = await listFiles(backupDir);
+    const prefix = `${slug(name)}-v`;
+    const versions: { version: number; timestamp: string }[] = [];
+    for (const file of files) {
+      const base = path.basename(file.fsPath);
+      if (!base.startsWith(prefix) || !base.endsWith(".md")) continue;
+      const vStr = base.slice(prefix.length, base.length - 3);
+      const v = parseInt(vStr, 10);
+      if (isNaN(v)) continue;
+      // Get file modification time
+      try {
+        const stat = await vscode.workspace.fs.stat(file);
+        const date = new Date(stat.mtime);
+        versions.push({ version: v, timestamp: date.toISOString() });
+      } catch {
+        versions.push({ version: v, timestamp: "unknown" });
+      }
+    }
+    return versions.sort((a, b) => a.version - b.version);
   }
 
   /** Delete a skill by name. */

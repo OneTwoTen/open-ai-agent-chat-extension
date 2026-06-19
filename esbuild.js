@@ -2,6 +2,7 @@ const esbuild = require("esbuild");
 
 const production = process.argv.includes("--production");
 const watch = process.argv.includes("--watch");
+const e2e = process.argv.includes("--e2e");
 
 /** Build config for the extension host (Node / CommonJS). */
 const extensionConfig = {
@@ -31,7 +32,45 @@ const webviewConfig = {
   loader: { ".css": "css" },
 };
 
+/** Build config for VS Code integration test entrypoints. */
+const e2eConfigs = [
+  {
+    entryPoints: ["test/e2e/runTest.ts"],
+    bundle: true,
+    format: "cjs",
+    platform: "node",
+    target: "node18",
+    outfile: "dist/e2e/runTest.js",
+    external: ["vscode"],
+    sourcemap: !production,
+    minify: production,
+    logLevel: "info",
+  },
+  {
+    entryPoints: ["test/e2e/suite/extension.test.ts"],
+    bundle: true,
+    format: "cjs",
+    platform: "node",
+    target: "node18",
+    outfile: "dist/e2e/suite/extension.test.js",
+    external: ["vscode"],
+    sourcemap: !production,
+    minify: production,
+    logLevel: "info",
+  },
+];
+
 async function main() {
+  if (e2e) {
+    await Promise.all([
+      esbuild.build(extensionConfig),
+      esbuild.build(webviewConfig),
+      ...e2eConfigs.map((config) => esbuild.build(config)),
+    ]);
+    console.log("[e2e] build complete");
+    return;
+  }
+
   const ctxExt = await esbuild.context(extensionConfig);
   const ctxWeb = await esbuild.context(webviewConfig);
 

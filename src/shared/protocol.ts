@@ -72,6 +72,7 @@ export interface SkillDTO {
   description: string;
   alwaysApply: boolean;
   body: string;
+  version?: number;
 }
 
 export interface ToolCatalogItem {
@@ -188,7 +189,11 @@ export type WebviewToHost =
   | { type: "startTelegram" }
   | { type: "stopTelegram" }
   | { type: "setTelegramToken"; token: string }
-  | { type: "updateTelegramConfig"; config: TelegramConfigUpdate };
+  | { type: "updateTelegramConfig"; config: TelegramConfigUpdate }
+  | { type: "exportAgent"; agent: AgentDTO }
+  | { type: "exportSkill"; skill: SkillDTO }
+  | { type: "importAgent" }
+  | { type: "importSkill" };
 
 export type HostToWebview =
   | {
@@ -230,7 +235,9 @@ export type HostToWebview =
   | { type: "mcpStatus"; servers: McpServerStatus[] }
   | { type: "telegramStatus"; status: TelegramStatus }
   | { type: "telegramActivity"; item: TelegramActivityItem }
-  | { type: "workingSet"; files: WorkingSetFile[] };
+  | { type: "workingSet"; files: WorkingSetFile[] }
+  | { type: "importedAgent"; agent: AgentDTO }
+  | { type: "importedSkill"; skill: SkillDTO };
 
 /** A file in the working set with its modification status. */
 export interface WorkingSetFile {

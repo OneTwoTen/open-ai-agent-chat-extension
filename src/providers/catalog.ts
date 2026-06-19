@@ -244,6 +244,12 @@ export const MUTATING_TOOLS = [
   "create_directory",
   "move_file",
   "run_command",
+  "git_stage",
+  "git_unstage",
+  "git_commit",
+  "git_branch",
+  "git_push",
+  "git_pull",
 ];
 
 /** SecretStorage key for a provider's API key (or credential bundle). */

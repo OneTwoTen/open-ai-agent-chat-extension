@@ -12,6 +12,7 @@ import {
   Text,
   TextInput,
   Textarea,
+  Tooltip,
 } from "@mantine/core";
 import React, { useEffect, useState } from "react";
 import { AgentDTO } from "../../src/shared/protocol";
@@ -57,9 +58,16 @@ export function AgentsPanel({ state, actions }: { state: ChatState; actions: Act
     <ScrollArea className="panel-scroll">
       <Group justify="space-between" mb="sm">
         <Text fw={700}>Agents</Text>
-        <Button size="xs" onClick={() => setEditing(blankAgent())}>
-          + New agent
-        </Button>
+        <Group gap={4}>
+          <Tooltip label="Import agent from file">
+            <Button size="xs" variant="subtle" onClick={() => actions.importAgent()}>
+              Import
+            </Button>
+          </Tooltip>
+          <Button size="xs" onClick={() => setEditing(blankAgent())}>
+            + New agent
+          </Button>
+        </Group>
       </Group>
       <Stack gap="xs">
         {state.agentDtos.map((a) => (
@@ -80,6 +88,13 @@ export function AgentsPanel({ state, actions }: { state: ChatState; actions: Act
               <Button size="compact-xs" variant="light" onClick={() => setEditing({ ...a })}>
                 {a.builtIn ? "View" : "Edit"}
               </Button>
+              {!a.builtIn && (
+                <Tooltip label="Export as JSON">
+                  <Button size="compact-xs" variant="subtle" onClick={() => actions.exportAgent(a)}>
+                    Export
+                  </Button>
+                </Tooltip>
+              )}
             </Group>
           </Card>
         ))}

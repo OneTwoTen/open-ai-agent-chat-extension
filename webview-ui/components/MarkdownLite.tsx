@@ -1,5 +1,5 @@
 import { ActionIcon, CopyButton, Menu, Tooltip, Typography } from "@mantine/core";
-import React from "react";
+import React, { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { vscode } from "../vscodeApi";
@@ -47,6 +47,98 @@ export function MarkdownLite({ text }: { text: string }) {
   );
 }
 
+/* ── Syntax highlighting ─────────────────────────────────────────────── */
+
+interface Token {
+  text: string;
+  cls?: string;
+}
+
+const KW_RE = /^(abstract|as|async|await|break|case|catch|class|const|continue|debugger|default|delete|do|else|enum|export|extends|false|finally|for|from|function|get|if|implements|import|in|instanceof|interface|let|module|new|null|of|package|private|protected|public|return|set|static|super|switch|this|throw|true|try|type|typeof|var|void|while|with|yield|fn|pub|self|struct|impl|use|mod|trait|match|loop|move|mut|ref|where|proc|def|elif|else|except|lambda|print|raise|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|JOIN|ON|GROUP|BY|ORDER|ASC|DESC|LIMIT|CREATE|ALTER|DROP|TABLE|INDEX|VIEW|INTO|VALUES|SET|AND|OR|NOT|NULL|IS|IN|LIKE|BETWEEN|AS|DISTINCT|COUNT|SUM|AVG|MIN|MAX|HAVING|UNION|ALL|EXISTS|CASE|WHEN|THEN|ELSE|END)$/;
+
+const STRING_RE = /^("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/;
+const COMMENT_RE = /^(\/\/[^\n]*|\/\*[\s\S]*?\*\/|#(?!![!{])[^\n]*)/;
+const NUMBER_RE = /^(0x[\da-fA-F]+|\d+\.?\d*(?:[eE][+-]?\d+)?)/;
+const FUNCTION_RE = /^([a-zA-Z_]\w*)(?=\s*\()/;
+const TYPE_RE = /^([A-Z]\w*)/;
+const OPERATOR_RE = /^(=>|[!=<>=!]=|&&|\|\||[+\-*/%]=?|\.\.\.?|::)/;
+const REGEX_RE = /^\/(?!\/)(?:[^/\\]|\\.)+\/[gimsuy]*/;
+
+function tokenizeLine(line: string): Token[] {
+  const tokens: Token[] = [];
+  let rest = line;
+  while (rest.length > 0) {
+    // Leading whitespace
+    const wsMatch = /^(\s+)/.exec(rest);
+    if (wsMatch) {
+      tokens.push({ text: wsMatch[1] });
+      rest = rest.slice(wsMatch[1].length);
+      continue;
+    }
+    // Order matters: comments & strings first, then others
+    const m =
+      COMMENT_RE.exec(rest) ||
+      STRING_RE.exec(rest) ||
+      REGEX_RE.exec(rest) ||
+      NUMBER_RE.exec(rest) ||
+      OPERATOR_RE.exec(rest) ||
+      FUNCTION_RE.exec(rest) ||
+      TYPE_RE.exec(rest) ||
+      KW_RE.exec(rest);
+    if (m) {
+      const raw = m[0];
+      let cls: string | undefined;
+      if (COMMENT_RE.test(raw)) cls = "tok-comment";
+      else if (STRING_RE.test(raw)) cls = "tok-string";
+      else if (REGEX_RE.test(raw)) cls = "tok-regex";
+      else if (NUMBER_RE.test(raw)) cls = "tok-number";
+      else if (OPERATOR_RE.test(raw)) cls = "tok-operator";
+      else if (FUNCTION_RE.test(raw)) cls = "tok-function";
+      else if (TYPE_RE.test(raw)) cls = "tok-type";
+      else if (KW_RE.test(raw)) cls = "tok-keyword";
+      tokens.push({ text: raw, cls });
+      rest = rest.slice(raw.length);
+    } else {
+      // Accumulate plain text until next potential token start
+      let end = 1;
+      while (end < rest.length && !/[\s"'`/#!0-9A-Z_a-z]"/.test(rest[end])) {
+        end++;
+      }
+      tokens.push({ text: rest.slice(0, end) });
+      rest = rest.slice(end);
+    }
+  }
+  return tokens;
+}
+
+function HighlightedCode({ content, lang }: { content: string; lang?: string }) {
+  const lines = content.split("\n");
+  const tokenized = useMemo(
+    () => lines.map((line) => (lang ? tokenizeLine(line) : [{ text: line }])),
+    [content, lang],
+  );
+  return (
+    <>
+      {tokenized.map((tokens, i) => (
+        <React.Fragment key={i}>
+          {tokens.map((t, j) =>
+            t.cls ? (
+              <span key={j} className={t.cls}>
+                {t.text}
+              </span>
+            ) : (
+              <React.Fragment key={j}>{t.text}</React.Fragment>
+            ),
+          )}
+          {i < tokenized.length - 1 ? "\n" : null}
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+
+/* ── Code block with actions ─────────────────────────────────────────── */
+
 function CodeBlock({ content, lang }: { content: string; lang?: string }) {
   return (
     <div className="md-code-wrap">
@@ -78,7 +170,9 @@ function CodeBlock({ content, lang }: { content: string; lang?: string }) {
       </div>
       <pre className="md-code">
         {lang && <span className="md-codelang">{lang}</span>}
-        <code>{content}</code>
+        <code>
+          <HighlightedCode content={content} lang={lang} />
+        </code>
       </pre>
     </div>
   );

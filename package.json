@@ -274,7 +274,12 @@
         "aiAgentChat.stepTimeoutMs": {
           "type": "number",
           "default": 120000,
-          "description": "Timeout in ms for a single step (default: 2 minutes). Aborts if a step takes too long."
+          "description": "Timeout in ms for a single step (default: 2 minutes). Aborts if a step takes too."
+        },
+        "aiAgentChat.maxContextTokens": {
+          "type": "number",
+          "default": 0,
+          "description": "Maximum context tokens to use per session. 0 = auto-detect from model. When usage exceeds this, a warning is shown."
         },
         "aiAgentChat.reasoning": {
           "type": "string",
@@ -344,13 +349,15 @@
     "watch": "node esbuild.js --watch",
     "compile": "tsc --noEmit",
     "package": "vsce package",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "node esbuild.js --e2e && node dist/e2e/runTest.js"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@types/vscode": "^1.90.0",
+    "@vscode/test-electron": "^3.0.0",
     "esbuild": "^0.21.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.0"
