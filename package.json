@@ -340,7 +340,7 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
-    "build": "node esbuild.js --production",
+    "build": "npm run compile && npm run test && node esbuild.js --production",
     "watch": "node esbuild.js --watch",
     "compile": "tsc --noEmit",
     "package": "vsce package",

@@ -225,6 +225,9 @@ export async function runAgentTurn(
     const permission = vscode.workspace.getConfiguration("aiAgentChat")
       .get<PermissionLevel>("permission", "ask");
 
+    const allowExternalFiles = vscode.workspace.getConfiguration("aiAgentChat")
+      .get<boolean>("allowExternalFiles", false);
+
     // Connect MCP (non-fatal if fails)
     try {
       await mcp.connectAll();
@@ -235,6 +238,7 @@ export async function runAgentTurn(
     const toolCtx = createTelegramToolContext(
       bot, chatId, sessions, root,
       permission,
+      allowExternalFiles,
       index, memory, skills,
     );
 

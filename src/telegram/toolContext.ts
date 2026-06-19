@@ -16,6 +16,7 @@ export function createTelegramToolContext(
   sessions: TelegramSessionManager,
   workspaceRoot: string,
   permission: PermissionLevel,
+  allowExternalFiles: boolean,
   repoIndex: RepoIndex,
   memory: MemoryStore,
   skills: SkillManager,
@@ -23,6 +24,7 @@ export function createTelegramToolContext(
   return {
     workspaceRoot,
     permission,
+    allowExternalFiles,
     memory,
     skills,
     repoIndex,

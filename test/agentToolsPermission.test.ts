@@ -1,68 +1,76 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { buildTools } from "../src/agent/tools";
-import type { ToolContext } from "../src/agent/agent";
+import { buildTools, type ToolContext } from "../src/agent/tools";
+
+function makeCtx(overrides?: Partial<ToolContext>): ToolContext {
+  return {
+    workspaceRoot: "/tmp/ws",
+    permission: "ask",
+    allowExternalFiles: false,
+    confirm: async () => true,
+    previewEdit: async () => true,
+    repoIndex: {} as unknown as ToolContext["repoIndex"],
+    memory: {} as unknown as ToolContext["memory"],
+    skills: {} as unknown as ToolContext["skills"],
+    ...overrides,
+  };
+}
 
 describe("Agent Tools Permission Logic", () => {
-  let mockCtx: ToolContext;
-
-  beforeEach(() => {
-    mockCtx = {
-      permission: "ask",
-      confirm: vi.fn(async () => true),
-      previewEdit: vi.fn(async () => true),
-      // Add other necessary mock properties
-    } as any;
-  });
-
   describe("Confirmation Logic (ensure)", () => {
     it("should always require confirmation for destructive tools in 'ask' mode", async () => {
-      mockCtx.permission = "ask";
-      const tools = buildTools(mockCtx, "all");
+      const ctx = makeCtx({ permission: "ask", confirm: vi.fn(async () => true) });
+      const tools = buildTools(ctx, "all");
       
-      // We need to trigger a tool that calls 'ensure'
-      // Since 'ensure' is internal, we test it via the tool execution
-      await tools.run_command({ command: "ls" });
-      expect(mockCtx.confirm).toHaveBeenCalled();
+      // run_command is destructive, should require confirmation in 'ask' mode
+      await (tools.run_command as any).execute({ command: "echo test" });
+      expect(ctx.confirm).toHaveBeenCalled();
     });
 
     it("should allow non-destructive tools without confirmation in 'auto' mode", async () => {
-      mockCtx.permission = "auto";
-      const tools = buildTools(mockCtx, "all");
+      const ctx = makeCtx({ permission: "auto", confirm: vi.fn(async () => true) });
+      const tools = buildTools(ctx, "all");
       
-      await tools.read_file({ path: "test.txt" });
-      expect(mockCtx.confirm).not.toHaveBeenCalled();
+      // read_file is non-destructive, should not require confirmation in 'auto' mode
+      await (tools.read_file as any).execute({ path: "test.txt" });
+      expect(ctx.confirm).not.toHaveBeenCalled();
     });
 
-    it("should NOW allow destructive tools without confirmation in 'auto' mode", async () => {
-      mockCtx.permission = "auto";
-      const tools = buildTools(mockCtx, "all");
+    it("should allow destructive tools without confirmation in 'auto' mode", async () => {
+      const ctx = makeCtx({ permission: "auto", confirm: vi.fn(async () => true) });
+      const tools = buildTools(ctx, "all");
       
-      // Test run_command
-      await tools.run_command({ command: "rm -rf /" });
-      // Test delete_file
-      await tools.delete_file({ path: "important.txt" });
+      // run_command is destructive but auto mode allows without confirm
+      await (tools.run_command as any).execute({ command: "echo test" });
+      // delete_file also destructive
+      await (tools.delete_file as any).execute({ path: "important.txt" });
       
-      expect(mockCtx.confirm).not.toHaveBeenCalled();
+      expect(ctx.confirm).not.toHaveBeenCalled();
     });
   });
 
   describe("Preview Edit Logic", () => {
-    it("should request preview edit in 'ask' or 'confirm' mode", async () => {
-      mockCtx.permission = "confirm";
-      const tools = buildTools(mockCtx, "all");
+    it("should request preview edit in 'ask' mode", async () => {
+      const ctx = makeCtx({
+        permission: "ask",
+        previewEdit: vi.fn(async () => true),
+      });
+      const tools = buildTools(ctx, "all");
       
-      await tools.write_file({ path: "test.txt", content: "hello" });
-      expect(mockCtx.previewEdit).toHaveBeenCalled();
+      await (tools.write_file as any).execute({ path: "test.txt", content: "hello" });
+      expect(ctx.previewEdit).toHaveBeenCalled();
     });
 
     it("should skip preview edit in 'auto' mode", async () => {
-      mockCtx.permission = "auto";
-      const tools = buildTools(mockCtx, "all");
+      const ctx = makeCtx({
+        permission: "auto",
+        previewEdit: vi.fn(async () => true),
+      });
+      const tools = buildTools(ctx, "all");
       
-      await tools.write_file({ path: "test.txt", content: "hello" });
-      await tools.edit_file({ path: "test.txt", oldText: "a", newText: "b" });
+      await (tools.write_file as any).execute({ path: "test.txt", content: "hello" });
+      await (tools.edit_file as any).execute({ path: "test.txt", oldText: "a", newText: "b" });
       
-      expect(mockCtx.previewEdit).not.toHaveBeenCalled();
+      expect(ctx.previewEdit).not.toHaveBeenCalled();
     });
   });
 });

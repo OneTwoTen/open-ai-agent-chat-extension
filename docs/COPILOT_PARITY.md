@@ -71,8 +71,14 @@ VS Code does not let an extension force the Secondary Side Bar via the manifest.
 13. Voice input: done. Speech-to-text via Web Speech API. Export conversation to Markdown: done. Per-message token cost: done. Estimated cost displayed with per-provider rates.
 14. Keybindings: done for inline chat, quick chat, and new chat.
 
-## Suggested next step
+## Suggested next steps
 
-The remaining highest-value gap is a visible working set for edit mode, followed by true image payload support for vision-capable models.
+The highest-value remaining gaps are:
+
+1. **Inline Chat model picker** — let users switch models mid-conversation without opening settings.
+2. **Chat participant routing (`@workspace`, `@terminal`, `@vscode`)** — currently baseline shortcuts; need full context injection like Copilot.
+3. **Terminal command execution integration** — deep integration with VS Code terminal for running commands with output capture.
+4. **Multi-root workspace support** — handle workspaces with multiple folders.
+5. **Trust & release readiness** — permission UX refinement, audit log for tool calls, E2E smoke tests, security hardening for Telegram.
 
 > Content was rephrased for compliance with licensing restrictions.
