@@ -15,6 +15,7 @@ import {
   SessionSummary,
   SkillDTO,
   StepUsage,
+  TelegramActivityItem,
   TelegramConfigUpdate,
   TelegramStatus,
   ToolCatalogItem,
@@ -64,6 +65,7 @@ export interface ChatState {
   skills: SkillDTO[];
   mcpServers: McpServerStatus[];
   telegramStatus: TelegramStatus;
+  telegramActivity: TelegramActivityItem[];
   workingSet: WorkingSetFile[];
 }
 
@@ -105,6 +107,7 @@ const INITIAL: ChatState = {
     startOnActivation: false,
     proxyUrl: "",
   },
+  telegramActivity: [],
   workingSet: [],
 };
 
@@ -149,6 +152,7 @@ export interface Actions {
   stopTelegram(): void;
   setTelegramToken(): void;
   updateTelegramConfig(config: TelegramConfigUpdate): void;
+  clearTelegramActivity(): void;
 }
 
 export function useController(): { state: ChatState; actions: Actions } {
@@ -267,6 +271,12 @@ export function useController(): { state: ChatState; actions: Actions } {
         case "telegramStatus":
           patch({ telegramStatus: msg.status });
           break;
+        case "telegramActivity":
+          setState((s) => ({
+            ...s,
+            telegramActivity: [...s.telegramActivity.slice(-49), msg.item],
+          }));
+          break;
       }
     });
     vscode.postMessage({ type: "ready" });
@@ -342,6 +352,7 @@ export function useController(): { state: ChatState; actions: Actions } {
     stopTelegram: () => vscode.postMessage({ type: "stopTelegram" }),
     setTelegramToken: () => vscode.postMessage({ type: "setTelegramToken", token: "" }),
     updateTelegramConfig: (config) => vscode.postMessage({ type: "updateTelegramConfig", config }),
+    clearTelegramActivity: () => patch({ telegramActivity: [] }),
   };
 
   return { state, actions };

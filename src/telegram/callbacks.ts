@@ -2,6 +2,7 @@ import { type AgentCallbacks } from "../agent/agent";
 import type { UsageStats } from "../shared/protocol";
 import type { GrammyContext } from "./types";
 import { type Bot } from "grammy";
+import { eventBus } from "../shared/eventBus";
 
 const MAX_TG_LENGTH = 4000;
 const STREAM_EDIT_LIMIT = 3800;
@@ -214,14 +215,30 @@ export function createTelegramCallbacks(
       // Telegram only shows assistant-facing content.
     },
 
-    onToolCall(_id: string, name: string, _args: unknown): void {
+    onToolCall(_id: string, name: string, args: unknown): void {
       startTyping();
       toolNames.push(name);
       updateStreamingMessage(renderWorkingText());
+
+      // Emit tool called event
+      eventBus.emit("telegram:activity", {
+        type: "toolCalled",
+        chatId,
+        timestamp: Date.now(),
+        data: { toolName: name, args },
+      });
     },
 
-    onToolResult(_id: string, _name: string, _result: unknown): void {
+    onToolResult(_id: string, name: string, result: unknown): void {
       startTyping();
+
+      // Emit tool result event
+      eventBus.emit("telegram:activity", {
+        type: "toolResult",
+        chatId,
+        timestamp: Date.now(),
+        data: { toolName: name, resultLength: typeof result === "string" ? result.length : 0 },
+      });
     },
 
     onStepUsage(_tools: string[], _usage: UsageStats): void {

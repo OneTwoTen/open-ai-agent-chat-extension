@@ -229,6 +229,7 @@ export type HostToWebview =
   | { type: "skillsList"; skills: SkillDTO[] }
   | { type: "mcpStatus"; servers: McpServerStatus[] }
   | { type: "telegramStatus"; status: TelegramStatus }
+  | { type: "telegramActivity"; item: TelegramActivityItem }
   | { type: "workingSet"; files: WorkingSetFile[] };
 
 /** A file in the working set with its modification status. */
@@ -249,6 +250,16 @@ export interface TelegramStatus {
   workspacePath: string;
   startOnActivation: boolean;
   proxyUrl: string;
+}
+
+/** Real-time activity item from a Telegram chat. */
+export interface TelegramActivityItem {
+  id: string;
+  chatId: number;
+  type: "messageReceived" | "turnStarted" | "turnCompleted" | "toolCalled" | "toolResult" | "error" | "fileChanged";
+  timestamp: number;
+  summary: string;
+  details?: Record<string, unknown>;
 }
 
 /** Telegram bot configuration update from the UI. */

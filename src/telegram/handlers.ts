@@ -28,6 +28,7 @@ import {
 import type { TelegramSessionManager } from "./session";
 import type { PermissionLevel, Attachment, TranscriptItem, UsageStats } from "../shared/protocol";
 import { SessionStore, titleFrom } from "../sessions";
+import { eventBus } from "../shared/eventBus";
 
 export function parseConfirmCallbackData(data: string): { key: string; chatId: number; value: boolean } | null {
   if (!data.startsWith("confirm:")) {
@@ -162,14 +163,22 @@ export async function runAgentTurn(
 
   log("info", `Starting turn for chat ${chatId}`, { agentId: session.agentId, textLen: text.length });
 
+  // Emit message received event
+  eventBus.emit("telegram:activity", {
+    type: "messageReceived",
+    chatId,
+    timestamp: Date.now(),
+    data: { text: text.slice(0, 200), agentId: session.agentId, hasAttachments: attachments.length > 0 },
+  });
+
   // Build workspace services
   const agents = new AgentManager(root);
   const skills = new SkillManager(root);
   const memory = new MemoryStore(root);
-    const index = new RepoIndex(
-      vscode.Uri.file(path.join(resolveAgentchatDir(root), "repo-index.json")),
-      () => getEmbeddingModel(secrets),
-    );
+  const index = new RepoIndex(
+    vscode.Uri.file(path.join(resolveAgentchatDir(root), "repo-index.json")),
+    () => getEmbeddingModel(secrets),
+  );
   const mcp = new McpManager(root);
 
   try {
@@ -323,6 +332,14 @@ export async function runAgentTurn(
     // Add user message to transcript
     transcript.push({ kind: "user", text, attachments: attachments.map((a) => a.path) });
 
+    // Emit turn started event
+    eventBus.emit("telegram:activity", {
+      type: "turnStarted",
+      chatId,
+      timestamp: Date.now(),
+      data: { agentId: session.agentId, providerId, modelId, turnLabel },
+    });
+
     await session.agentSession.run({
       model,
       systemMessage,
@@ -336,6 +353,14 @@ export async function runAgentTurn(
     });
     await callbacks.flush();
 
+    // Emit turn completed event
+    eventBus.emit("telegram:activity", {
+      type: "turnCompleted",
+      chatId,
+      timestamp: Date.now(),
+      data: { agentId: session.agentId, transcriptLength: transcript.length },
+    });
+
     // Persist session to SessionStore
     if (transcript.length > 0 && session.sessionId) {
       try {
@@ -348,6 +373,15 @@ export async function runAgentTurn(
           transcript,
           history: session.agentSession.getHistory(),
         });
+
+        // Emit session updated event to refresh UI
+        eventBus.emit("telegram:session", {
+          type: "sessionUpdated",
+          chatId,
+          sessionId: session.sessionId,
+          agentId: session.agentId,
+          timestamp: Date.now(),
+        });
       } catch (err) {
         log("warn", "Failed to persist Telegram session", err);
       }
@@ -357,6 +391,14 @@ export async function runAgentTurn(
 
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
+
+    // Emit error event
+    eventBus.emit("telegram:activity", {
+      type: "error",
+      chatId,
+      timestamp: Date.now(),
+      data: { message: msg.slice(0, 500), agentId: session.agentId },
+    });
 
     if (msg === "Request cancelled.") {
       await bot.api.sendMessage(chatId, "⏹️ Request cancelled.");

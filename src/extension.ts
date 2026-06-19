@@ -11,6 +11,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewViewProvider(ChatViewProvider.viewType, provider, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
+    provider,
     vscode.commands.registerCommand("aiAgentChat.newChat", () => provider.newChat()),
     vscode.commands.registerCommand("aiAgentChat.openInEditor", () => provider.openInEditor()),
     vscode.commands.registerCommand("aiAgentChat.quickChat", () => provider.quickChat()),

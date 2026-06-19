@@ -9,8 +9,8 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import React, { useEffect, useState } from "react";
-import { TelegramConfigUpdate } from "../../src/shared/protocol";
+import React, { useEffect, useRef, useState } from "react";
+import { TelegramActivityItem, TelegramConfigUpdate } from "../../src/shared/protocol";
 import { Actions, ChatState } from "../controller";
 
 function formatUptime(ms: number): string {
@@ -20,6 +20,24 @@ function formatUptime(ms: number): string {
   if (hours > 0) return `${hours}h ${minutes % 60}m`;
   if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
   return `${seconds}s`;
+}
+
+function formatTimestamp(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function getActivityColor(type: TelegramActivityItem["type"]): string {
+  switch (type) {
+    case "messageReceived": return "blue";
+    case "turnStarted": return "yellow";
+    case "turnCompleted": return "green";
+    case "toolCalled": return "violet";
+    case "toolResult": return "teal";
+    case "error": return "red";
+    case "fileChanged": return "orange";
+    default: return "gray";
+  }
 }
 
 export function TelegramPanel({ state, actions }: { state: ChatState; actions: Actions }) {
@@ -32,9 +50,19 @@ export function TelegramPanel({ state, actions }: { state: ChatState; actions: A
   const [idsText, setIdsText] = useState(
     state.telegramStatus.allowedChatIds.join(", ")
   );
+  const refreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     actions.getTelegramStatus();
+    // Auto-refresh every 5 seconds when bot is running
+    refreshRef.current = setInterval(() => {
+      actions.getTelegramStatus();
+    }, 5000);
+    return () => {
+      if (refreshRef.current) {
+        clearInterval(refreshRef.current);
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -166,6 +194,43 @@ export function TelegramPanel({ state, actions }: { state: ChatState; actions: A
           </Group>
         </Stack>
       </Card>
+
+      {/* ── Real-time activity card ──────────────────────── */}
+      {st.running && state.telegramActivity.length > 0 && (
+        <Card withBorder radius="md" padding="sm" mb="md">
+          <Group justify="space-between" mb="xs">
+            <Text fw={700}>Live Activity</Text>
+            <Group gap={4}>
+              <Badge size="sm" color="green" variant="dot">Real-time</Badge>
+              <Button
+                size="compact-xs"
+                variant="subtle"
+                color="gray"
+                onClick={() => actions.clearTelegramActivity()}
+              >
+                Clear
+              </Button>
+            </Group>
+          </Group>
+          <ScrollArea h={200}>
+            <Stack gap={4}>
+              {[...state.telegramActivity].reverse().map((item) => (
+                <Group key={item.id} gap="xs" wrap="nowrap">
+                  <Badge size="xs" color={getActivityColor(item.type)} variant="light">
+                    {item.type.replace(/([A-Z])/g, " $1").trim()}
+                  </Badge>
+                  <Text size="xs" flex={1} truncate>
+                    {item.summary}
+                  </Text>
+                  <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+                    {formatTimestamp(item.timestamp)}
+                  </Text>
+                </Group>
+              ))}
+            </Stack>
+          </ScrollArea>
+        </Card>
+      )}
 
       {/* ── Usage tips card ───────────────────────────────── */}
       <Card withBorder radius="md" padding="sm">

@@ -48,12 +48,14 @@ import {
   PermissionLevel,
   ProviderConnectionSettings,
   ReasoningEffort,
+  TelegramActivityItem,
   ToolCatalogItem,
   TranscriptItem,
   UsageStats,
   WebviewToHost,
   WorkingSetFile,
 } from "./shared/protocol";
+import { eventBus, TelegramActivityEvent, TelegramSessionEvent } from "./shared/eventBus";
 
 const ZERO_USAGE: UsageStats = {
   inputTokens: 0,
@@ -84,7 +86,7 @@ interface WorkspaceServices {
   mcpConnected: boolean;
 }
 
-export class ChatViewProvider implements vscode.WebviewViewProvider {
+export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   public static readonly viewType = "aiAgentChat.chatView";
 
   private readonly webviews = new Set<vscode.Webview>();
@@ -108,6 +110,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private workingSet: WorkingSetFile[] = [];
 
   private telegramBot?: TelegramBotManager;
+  private readonly disposeEventBus: () => void;
 
   constructor(private readonly context: vscode.ExtensionContext, telegramBot?: TelegramBotManager) {
     this.currentSessionId = this.newId();
@@ -116,6 +119,55 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.permission = context.workspaceState.get<PermissionLevel>("aiAgentChat.permission", "ask");
     this.sessionStore = new SessionStore(resolveStorageDir(context));
     this.telegramBot = telegramBot;
+
+    // Listen to Telegram activity events and forward to webview
+    this.disposeEventBus = eventBus.on("telegram:activity", (event) => {
+      const activityItem: TelegramActivityItem = {
+        id: `${event.chatId}-${event.timestamp}`,
+        chatId: event.chatId,
+        type: event.type,
+        timestamp: event.timestamp,
+        summary: this.formatTelegramActivitySummary(event),
+        details: event.data,
+      };
+      this.post({ type: "telegramActivity", item: activityItem });
+    });
+
+    // Listen to Telegram session events and refresh sessions list
+    const disposeSessionListener = eventBus.on("telegram:session", () => {
+      this.sendSessions();
+    });
+
+    const prevDispose = this.disposeEventBus;
+    this.disposeEventBus = () => {
+      prevDispose();
+      disposeSessionListener();
+    };
+  }
+
+  dispose(): void {
+    this.disposeEventBus();
+  }
+
+  private formatTelegramActivitySummary(event: TelegramActivityEvent): string {
+    switch (event.type) {
+      case "messageReceived":
+        return `Chat ${event.chatId}: ${String(event.data.text).slice(0, 100)}`;
+      case "turnStarted":
+        return `Chat ${event.chatId}: Agent working...`;
+      case "turnCompleted":
+        return `Chat ${event.chatId}: Turn completed`;
+      case "toolCalled":
+        return `Chat ${event.chatId}: Using ${String(event.data.toolName)}`;
+      case "toolResult":
+        return `Chat ${event.chatId}: ${String(event.data.toolName)} completed`;
+      case "error":
+        return `Chat ${event.chatId}: Error - ${String(event.data.message).slice(0, 100)}`;
+      case "fileChanged":
+        return `Chat ${event.chatId}: File ${String(event.data.status)} ${String(event.data.filePath)}`;
+      default:
+        return `Chat ${event.chatId}: Activity`;
+    }
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {

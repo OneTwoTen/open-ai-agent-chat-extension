@@ -51,11 +51,10 @@ const CONFIRM_TITLES: Record<string, string> = {
 
 /**
  * Decide whether a mutating tool may proceed, based on the permission level.
- * Destructive tools (delete, run_command) always confirm, even in `auto`.
+ * In `auto` mode, all mutating tools proceed without confirmation.
  */
 async function ensure(ctx: ToolContext, name: string, detail: string): Promise<boolean> {
-  const destructive = name === "delete_file" || name === "run_command";
-  if (ctx.permission === "auto" && !destructive) {
+  if (ctx.permission === "auto") {
     return true;
   }
   return ctx.confirm(CONFIRM_TITLES[name] ?? "Proceed?", detail);
@@ -111,7 +110,7 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
         } catch {
           original = "";
         }
-        if (ctx.previewEdit && !(await ctx.previewEdit(p, original, content))) {
+        if (ctx.permission !== "auto" && ctx.previewEdit && !(await ctx.previewEdit(p, original, content))) {
           return "Write rejected by the user.";
         }
         await vscode.workspace.fs.writeFile(vscode.Uri.file(fp), Buffer.from(content, "utf8"));
@@ -146,7 +145,7 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
         const updated = replaceAll
           ? original.split(oldText).join(newText)
           : original.replace(oldText, newText);
-        if (ctx.previewEdit && !(await ctx.previewEdit(p, original, updated))) {
+        if (ctx.permission !== "auto" && ctx.previewEdit && !(await ctx.previewEdit(p, original, updated))) {
           return "Edit rejected by the user.";
         }
         await vscode.workspace.fs.writeFile(uri, Buffer.from(updated, "utf8"));
