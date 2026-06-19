@@ -52,7 +52,8 @@ See [SEARCH.md](SEARCH.md).
 ## Safety
 
 - `delete_file` and `run_command` prompt the user with a modal confirmation before acting.
-- Path inputs are resolved inside the workspace; anything resolving outside is rejected.
+- Path inputs are resolved inside the workspace; anything resolving outside is rejected by default.
+- **External File Access**: To allow the agent to access files outside the workspace root, enable the `aiAgentChat.allowExternalFiles` setting in VS Code.
 - Read-only agents (`ask`, `architect`) receive only non-mutating tools.
 
 ## Adding a tool

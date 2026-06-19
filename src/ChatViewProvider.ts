@@ -839,6 +839,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     return {
       workspaceRoot: services.root,
       permission: this.permission,
+      allowExternalFiles: this.config().get<boolean>("allowExternalFiles", false),
       confirm: (title, detail) => this.confirm(title, detail),
       previewEdit: (filePath, original, updated) =>
         this.previewEdit(filePath, original, updated),

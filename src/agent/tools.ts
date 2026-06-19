@@ -21,6 +21,7 @@ const execAsync = promisify(exec);
 export interface ToolContext {
   workspaceRoot: string;
   permission: PermissionLevel;
+  allowExternalFiles: boolean;
   confirm: (title: string, detail: string) => Promise<boolean>;
   repoIndex: RepoIndex;
   memory: MemoryStore;
@@ -60,8 +61,11 @@ async function ensure(ctx: ToolContext, name: string, detail: string): Promise<b
   return ctx.confirm(CONFIRM_TITLES[name] ?? "Proceed?", detail);
 }
 
-function resolveInWorkspace(root: string, p: string): string {
+function resolveInWorkspace(root: string, p: string, allowExternal = false): string {
   const resolved = path.resolve(root, p);
+  if (allowExternal) {
+    return resolved;
+  }
   const rel = path.relative(root, resolved);
   if (rel.startsWith("..") || path.isAbsolute(rel)) {
     throw new Error(`Path '${p}' is outside the workspace.`);
@@ -83,7 +87,7 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
       description: "Read the text contents of a workspace file.",
       inputSchema: z.object({ path: z.string().describe("Workspace-relative path.") }),
       async execute({ path: p }) {
-        const fp = resolveInWorkspace(ctx.workspaceRoot, p);
+        const fp = resolveInWorkspace(ctx.workspaceRoot, p, ctx.allowExternalFiles);
         const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(fp));
         const text = Buffer.from(bytes).toString("utf8");
         const MAX = 60_000;
@@ -100,7 +104,7 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
         content: z.string(),
       }),
       async execute({ path: p, content }) {
-        const fp = resolveInWorkspace(ctx.workspaceRoot, p);
+        const fp = resolveInWorkspace(ctx.workspaceRoot, p, ctx.allowExternalFiles);
         if (!(await ensure(ctx, "write_file", p))) {
           return "Write declined by the user.";
         }
@@ -129,7 +133,7 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
         replaceAll: z.boolean().optional(),
       }),
       async execute({ path: p, oldText, newText, replaceAll }) {
-        const fp = resolveInWorkspace(ctx.workspaceRoot, p);
+        const fp = resolveInWorkspace(ctx.workspaceRoot, p, ctx.allowExternalFiles);
         const uri = vscode.Uri.file(fp);
         const original = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString("utf8");
         if (!original.includes(oldText)) {
@@ -158,7 +162,7 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
       description: "Delete a file or directory. Requires user confirmation.",
       inputSchema: z.object({ path: z.string(), recursive: z.boolean().optional() }),
       async execute({ path: p, recursive }) {
-        const fp = resolveInWorkspace(ctx.workspaceRoot, p);
+        const fp = resolveInWorkspace(ctx.workspaceRoot, p, ctx.allowExternalFiles);
         if (!(await ensure(ctx, "delete_file", p))) {
           return "Deletion declined by the user.";
         }
@@ -175,7 +179,7 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
       description: "Create a directory (and parents) in the workspace.",
       inputSchema: z.object({ path: z.string() }),
       async execute({ path: p }) {
-        const fp = resolveInWorkspace(ctx.workspaceRoot, p);
+        const fp = resolveInWorkspace(ctx.workspaceRoot, p, ctx.allowExternalFiles);
         if (!(await ensure(ctx, "create_directory", p))) {
           return "Declined by the user.";
         }
@@ -188,8 +192,8 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
       description: "Move or rename a file within the workspace.",
       inputSchema: z.object({ from: z.string(), to: z.string() }),
       async execute({ from, to }) {
-        const fromUri = vscode.Uri.file(resolveInWorkspace(ctx.workspaceRoot, from));
-        const toUri = vscode.Uri.file(resolveInWorkspace(ctx.workspaceRoot, to));
+        const fromUri = vscode.Uri.file(resolveInWorkspace(ctx.workspaceRoot, from, ctx.allowExternalFiles));
+        const toUri = vscode.Uri.file(resolveInWorkspace(ctx.workspaceRoot, to, ctx.allowExternalFiles));
         if (!(await ensure(ctx, "move_file", `${from} -> ${to}`))) {
           return "Move declined by the user.";
         }
@@ -203,7 +207,7 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
       description: "List entries in a workspace directory. Use '.' for the root.",
       inputSchema: z.object({ path: z.string() }),
       async execute({ path: p }) {
-        const fp = resolveInWorkspace(ctx.workspaceRoot, p || ".");
+        const fp = resolveInWorkspace(ctx.workspaceRoot, p || ".", ctx.allowExternalFiles);
         const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(fp));
         if (entries.length === 0) {
           return "(empty)";
@@ -290,7 +294,7 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
       async execute({ path: p }) {
         let diags = vscode.languages.getDiagnostics();
         if (p) {
-          const fp = resolveInWorkspace(ctx.workspaceRoot, p);
+          const fp = resolveInWorkspace(ctx.workspaceRoot, p, ctx.allowExternalFiles);
           diags = diags.filter(([uri]) => uri.fsPath === fp);
         }
         const lines: string[] = [];

@@ -247,6 +247,11 @@
           "default": "ask",
           "description": "Agent permission level: readonly (no edits), ask (confirm edits), auto (autonomous, destructive actions still confirm)."
         },
+        "aiAgentChat.allowExternalFiles": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow the agent to read and modify files outside the current workspace root. WARNING: This grants the agent broad access to your file system."
+        },
         "aiAgentChat.storagePath": {
           "type": "string",
           "default": "",
