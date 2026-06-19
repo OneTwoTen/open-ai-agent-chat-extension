@@ -2,7 +2,7 @@
   "name": "agent-coding-extension",
   "displayName": "Open AI Agent Chat",
   "description": "An agentic coding assistant for VS Code with multi-provider LLM support (OpenAI, Anthropic, Google, Azure, Bedrock, Mistral, Groq, Ollama, and more), three-tier search, multi-agent + skills, and chat history.",
-  "version": "0.0.2012",
+  "version": "0.0.2013",
   "publisher": "doct",
   "engines": {
     "vscode": "^1.90.0"
