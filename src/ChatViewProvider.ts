@@ -593,7 +593,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         builtIn: !!a.builtIn,
       })),
       agentId: this.agentId,
-      hasApiKey: await hasCredential(provider, this.context.secrets),
+      providerCredentials: Object.fromEntries(
+        await Promise.all(
+          PROVIDER_IDS.map(async (id) => [id, await hasCredential(id, this.context.secrets)])
+        )
+      ) as Record<string, boolean>,
       baseUrl: this.config().get<string>("baseUrl", ""),
       fileAnalysis: await this.getFileAnalysisSettings(),
       indexSize,
@@ -605,11 +609,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   private async selectProvider(provider: ProviderId): Promise<void> {
     await this.config().update("provider", provider, vscode.ConfigurationTarget.Workspace);
     await this.config().update("model", "", vscode.ConfigurationTarget.Workspace);
+    const providerCredentials = Object.fromEntries(
+      await Promise.all(
+        PROVIDER_IDS.map(async (id) => [id, await hasCredential(id, this.context.secrets)])
+      )
+    ) as Record<string, boolean>;
     this.post({
       type: "providerChanged",
       provider,
       model: PROVIDERS[provider].defaultModel,
-      hasApiKey: await hasCredential(provider, this.context.secrets),
+      hasApiKey: providerCredentials[provider],
+      providerCredentials,
     });
   }
 

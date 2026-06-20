@@ -2,7 +2,7 @@
   "name": "agent-coding-extension",
   "displayName": "Open AI Agent Chat",
   "description": "An agentic coding assistant for VS Code with multi-provider LLM support (OpenAI, Anthropic, Google, Azure, Bedrock, Mistral, Groq, Ollama, and more), three-tier search, multi-agent + skills, and chat history.",
-  "version": "0.0.2013",
+  "version": "0.0.2014",
   "publisher": "doct",
   "engines": {
     "vscode": "^1.90.0"
@@ -377,11 +377,13 @@
     "test:e2e": "node esbuild.js --e2e && node dist/e2e/runTest.js"
   },
   "devDependencies": {
+    "@rolldown/binding-win32-x64-msvc": "^1.0.3",
     "@types/node": "^20.11.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@types/vscode": "^1.90.0",
     "@vscode/test-electron": "^3.0.0",
+    "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.21.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.0"
@@ -426,5 +428,9 @@
   "bugs": {
     "url": "https://github.com/OneTwoTen/open-ai-agent-chat-extension/issues"
   },
-  "homepage": "https://github.com/OneTwoTen/open-ai-agent-chat-extension#readme"
+  "homepage": "https://github.com/OneTwoTen/open-ai-agent-chat-extension#readme",
+  "volta": {
+    "node": "22.23.0",
+    "npm": "10.9.8"
+  }
 }

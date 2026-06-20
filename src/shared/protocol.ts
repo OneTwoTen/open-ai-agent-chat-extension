@@ -205,7 +205,7 @@ export type HostToWebview =
       model: string;
       agents: AgentInfo[];
       agentId: string;
-      hasApiKey: boolean;
+      providerCredentials: Record<string, boolean>;
       baseUrl: string;
       fileAnalysis: FileAnalysisSettings;
       indexSize: number;
@@ -221,7 +221,7 @@ export type HostToWebview =
   | { type: "busy"; value: boolean }
   | { type: "note"; text: string }
   | { type: "cleared" }
-  | { type: "providerChanged"; provider: string; model: string; hasApiKey: boolean }
+  | { type: "providerChanged"; provider: string; model: string; hasApiKey: boolean; providerCredentials: Record<string, boolean> }
   | { type: "models"; provider: string; models: string[]; fetched: boolean }
   | { type: "turnMeta"; label: string }
   | { type: "agentChanged"; agentId: string }

@@ -174,7 +174,7 @@ export function App() {
         )}
       </Box>
 
-      {!state.hasApiKey && (
+      {!state.providerCredentials[state.provider] && (
         <Alert color="yellow" variant="light" radius={0} py={6} px="sm">
           <Group gap={8}>
             <Text size="xs">No API key for {activeProvider?.label ?? state.provider}.</Text>
@@ -321,7 +321,7 @@ function ProviderSettingsModal({
         />
         <PasswordInput
           size="xs"
-          label={state.hasApiKey ? "API key (leave blank to keep current)" : "API key"}
+          label={state.providerCredentials[state.provider] ? "API key (leave blank to keep current)" : "API key"}
           value={providerKey}
           onChange={(e) => setProviderKey(e.currentTarget.value)}
         />

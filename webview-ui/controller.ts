@@ -48,7 +48,7 @@ export interface ChatState {
   agentId: string;
   reasoning: ReasoningEffort;
   permission: PermissionLevel;
-  hasApiKey: boolean;
+  providerCredentials: Record<string, boolean>;
   baseUrl: string;
   fileAnalysis: FileAnalysisSettings;
   indexSize: number;
@@ -77,7 +77,7 @@ const INITIAL: ChatState = {
   agentId: "coder",
   reasoning: "off",
   permission: "ask",
-  hasApiKey: true,
+  providerCredentials: {},
   baseUrl: "",
   fileAnalysis: {
     enabled: true,
@@ -177,7 +177,7 @@ export function useController(): { state: ChatState; actions: Actions } {
             model: msg.model,
             agents: msg.agents,
             agentId: msg.agentId,
-            hasApiKey: msg.hasApiKey,
+            providerCredentials: msg.providerCredentials,
             baseUrl: msg.baseUrl,
             fileAnalysis: msg.fileAnalysis,
             indexSize: msg.indexSize,
@@ -186,7 +186,11 @@ export function useController(): { state: ChatState; actions: Actions } {
           });
           break;
         case "providerChanged":
-          patch({ provider: msg.provider, model: msg.model, hasApiKey: msg.hasApiKey });
+          patch({
+            provider: msg.provider,
+            model: msg.model,
+            providerCredentials: msg.providerCredentials,
+          });
           break;
         case "models":
           setState((s) => ({
@@ -378,7 +382,7 @@ export function useController(): { state: ChatState; actions: Actions } {
   return { state, actions };
 }
 
-function appendToAssistant(
+export function appendToAssistant(
   prev: ChatItem[],
   field: "text" | "reasoning",
   delta: string,
@@ -401,7 +405,7 @@ function appendToAssistant(
   return [...prev, fresh];
 }
 
-function closeAssistant(prev: ChatItem[]): ChatItem[] {
+export function closeAssistant(prev: ChatItem[]): ChatItem[] {
   const last = prev[prev.length - 1];
   if (last && last.kind === "assistant" && last.open) {
     const copy = [...prev];
@@ -411,7 +415,7 @@ function closeAssistant(prev: ChatItem[]): ChatItem[] {
   return prev;
 }
 
-function transcriptToChat(t: TranscriptItem): ChatItem {
+export function transcriptToChat(t: TranscriptItem): ChatItem {
   switch (t.kind) {
     case "user":
       return { kind: "user", text: t.text, attachments: t.attachments };
@@ -424,7 +428,7 @@ function transcriptToChat(t: TranscriptItem): ChatItem {
   }
 }
 
-function mergeAttachments(prev: Attachment[], next: Attachment[]): Attachment[] {
+export function mergeAttachments(prev: Attachment[], next: Attachment[]): Attachment[] {
   const map = new Map(prev.map((a) => [a.path, a]));
   for (const a of next) {
     map.set(a.path, a);
