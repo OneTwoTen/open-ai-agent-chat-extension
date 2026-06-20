@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import * as vscode from "vscode";
 import { buildTools, TOOL_CATALOG, ToolContext } from "../src/agent/tools";
 
 function makeCtx(overrides?: Partial<ToolContext>): ToolContext {
   return {
     workspaceRoot: "/tmp/ws",
     permission: "ask",
+    allowExternalFiles: false,
     confirm: async () => true,
     // Not exercised by these tests (tool bodies are never executed):
     repoIndex: {} as unknown as ToolContext["repoIndex"],
@@ -178,6 +180,31 @@ describe("buildTools - diff preview edits", () => {
     });
 
     expect(result).toBe("Edit rejected by the user.");
+  });
+
+  it("matches LF oldText against CRLF files and preserves CRLF replacements", async () => {
+    let written = "";
+    const readFile = vscode.workspace.fs.readFile;
+    const writeFile = vscode.workspace.fs.writeFile;
+    vscode.workspace.fs.readFile = async () => Buffer.from("alpha\r\nbeta\r\ngamma", "utf8");
+    vscode.workspace.fs.writeFile = async (_uri, content) => {
+      written = Buffer.from(content).toString("utf8");
+    };
+
+    try {
+      const tools = buildTools(makeCtx(), "all");
+      const result = await (tools.edit_file as any).execute({
+        path: "src/example.ts",
+        oldText: "alpha\nbeta",
+        newText: "one\ntwo",
+      });
+
+      expect(result).toBe("Edited src/example.ts (1 replacement).");
+      expect(written).toBe("one\r\ntwo\r\ngamma");
+    } finally {
+      vscode.workspace.fs.readFile = readFile;
+      vscode.workspace.fs.writeFile = writeFile;
+    }
   });
 });
 

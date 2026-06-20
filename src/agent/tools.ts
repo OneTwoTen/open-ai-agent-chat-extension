@@ -96,6 +96,28 @@ function cleanCommandOutput(text: string): string {
     .join("\n");
 }
 
+function findEditableSnippet(original: string, oldText: string): { oldText: string; newTextEol?: string } | undefined {
+  if (original.includes(oldText)) {
+    return { oldText, newTextEol: oldText.includes("\r\n") ? "\r\n" : oldText.includes("\n") ? "\n" : undefined };
+  }
+
+  if (!oldText.includes("\n") && !oldText.includes("\r")) {
+    return undefined;
+  }
+
+  const fileEol = original.includes("\r\n") ? "\r\n" : "\n";
+  const normalizedOldText = oldText.replace(/\r\n|\r|\n/g, fileEol);
+  if (original.includes(normalizedOldText)) {
+    return { oldText: normalizedOldText, newTextEol: fileEol };
+  }
+
+  return undefined;
+}
+
+function normalizeReplacementLineEndings(newText: string, eol?: string): string {
+  return eol ? newText.replace(/\r\n|\r|\n/g, eol) : newText;
+}
+
 /**
  * Build the full tool set bound to a context, optionally filtered to an
  * allow-list of tool names (used to scope read-only agents).
@@ -155,10 +177,12 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
         const fp = resolveInWorkspace(ctx.workspaceRoot, p, ctx.allowExternalFiles);
         const uri = vscode.Uri.file(fp);
         const original = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString("utf8");
-        if (!original.includes(oldText)) {
+        const match = findEditableSnippet(original, oldText);
+        if (!match) {
           return `Error: oldText not found in ${p}. Read the file and retry with an exact match.`;
         }
-        const occurrences = original.split(oldText).length - 1;
+        const replacement = normalizeReplacementLineEndings(newText, match.newTextEol);
+        const occurrences = original.split(match.oldText).length - 1;
         if (!replaceAll && occurrences > 1) {
           return `Error: oldText appears ${occurrences} times in ${p}. Add more context to make it unique, or set replaceAll.`;
         }
@@ -166,8 +190,8 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
           return "Edit declined by the user.";
         }
         const updated = replaceAll
-          ? original.split(oldText).join(newText)
-          : original.replace(oldText, newText);
+          ? original.split(match.oldText).join(replacement)
+          : original.replace(match.oldText, replacement);
         if (ctx.permission !== "auto" && ctx.previewEdit && !(await ctx.previewEdit(p, original, updated))) {
           return "Edit rejected by the user.";
         }
