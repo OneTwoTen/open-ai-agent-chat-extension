@@ -86,6 +86,16 @@ function rel(root: string, fsPath: string): string {
   return path.relative(root, fsPath).replace(/\\/g, "/");
 }
 
+function cleanCommandOutput(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .filter((line) => {
+      const trimmed = line.trim();
+      return trimmed !== "Debugger attached." && trimmed !== "Waiting for the debugger to disconnect...";
+    })
+    .join("\n");
+}
+
 /**
  * Build the full tool set bound to a context, optionally filtered to an
  * allow-list of tool names (used to scope read-only agents).
@@ -336,7 +346,7 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
             timeout: 120_000,
             maxBuffer: 10 * 1024 * 1024,
           });
-          const output = [stdout, stderr].filter(Boolean).join("\n").trim() || "(no output)";
+          const output = cleanCommandOutput([stdout, stderr].filter(Boolean).join("\n")).trim() || "(no output)";
           console.log(`[Tool:run_command] Completed in ${ctx.workspaceRoot}: ${command}`);
           ctx.onNote?.(`Command finished: ${command}`);
           return output;
@@ -344,7 +354,7 @@ export function buildTools(ctx: ToolContext, allowed: string[] | "all"): ToolSet
           const e = err as { stdout?: string; stderr?: string; message?: string };
           console.error(`[Tool:run_command] Failed in ${ctx.workspaceRoot}: ${command}`, err);
           ctx.onNote?.(`Command failed: ${command}`);
-          return `Command failed.\n${[e.stdout, e.stderr, e.message].filter(Boolean).join("\n")}`;
+          return `Command failed.\n${cleanCommandOutput([e.stdout, e.stderr, e.message].filter(Boolean).join("\n"))}`;
         }
       },
     }),
